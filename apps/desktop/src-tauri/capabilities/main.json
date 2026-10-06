@@ -1,0 +1,6 @@
+{
+  "identifier": "main",
+  "description": "Only the local window may listen to host events. No renderer shell or filesystem access.",
+  "windows": ["main"],
+  "permissions": ["core:event:allow-listen", "core:event:allow-unlisten"]
+}

@@ -1,0 +1,11 @@
+{
+  "installed": "~/Applications/Git View.app",
+  "backup": "<local-backup>/Git View.app",
+  "checksums": {
+    "Contents/MacOS/git-view-desktop": "bb40763b12fdd5aadd02158eae7a37cc33ac16653ed6629369764c80a46e8da6",
+    "Contents/Resources/app/stdio.mjs": "a171bc6e5883c605175d527b9962ff4c094aad03d78f6e5841012f2f45f850ea",
+    "Contents/Resources/app/inspect.mjs": "b1e328c691533658f58a98a6c5fc25e2b682a19beb6d8dc8971b6c766c08ade4",
+    "Contents/Resources/app/build-info.json": "038245bdd655b5dc932362cd86a627e0355b42e15c2bd20bac02db2a694a233c"
+  },
+  "pathNote": "Local user and temporary paths redacted before upload."
+}

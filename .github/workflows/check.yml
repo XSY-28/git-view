@@ -1,0 +1,37 @@
+name: Source checks
+on: [push, pull_request]
+permissions:
+  contents: read
+jobs:
+  source:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-15, macos-15-intel, windows-2025]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.7.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.19.0
+          cache: pnpm
+      - uses: dtolnay/rust-toolchain@1.99.0
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm typecheck
+      - name: macOS full tests including HTTP transport
+        if: runner.os == 'macOS'
+        run: pnpm test
+      - name: Windows core Git and stdio tests (HTTP fallback is POSIX only)
+        if: runner.os == 'Windows'
+        run: pnpm exec vitest run --exclude tests/integration/transport.test.ts
+      - run: pnpm build
+      - run: node scripts/build-desktop.mjs --prepare-only
+      - run: cargo check --locked --manifest-path apps/desktop/src-tauri/Cargo.toml
+      - run: cargo test --locked --manifest-path apps/desktop/src-tauri/Cargo.toml
+      - if: runner.os == 'macOS'
+        run: pnpm exec playwright install chrome
+      - if: runner.os == 'macOS'
+        run: pnpm test:e2e

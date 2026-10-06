@@ -1,0 +1,38 @@
+/* Warm paper surfaces and terracotta accents. Git status colors are independent. */
+:root {
+  color-scheme: light;
+  accent-color: var(--accent);
+  --canvas: #f6f2e9;
+  --paper: #fffdf8;
+  --panel: #faf7f0;
+  --sidebar: #eee7da;
+  --surface-subtle: #f1eadf;
+  --hover: #efe8dc;
+  --line: #ddd5c7;
+  --line-soft: #e9e1d5;
+  --line-strong: #bcb0a0;
+  --ink: #302b25;
+  --muted: #6a6157;
+  --accent: #9a4b2f;
+  --accent-strong: #7d402c;
+  --accent-soft: #eadfcd;
+  --on-accent: #fffdf8;
+  --icon-accent: #b96843;
+  --warning: #805b22;
+  --warning-soft: #f4ead3;
+  --warning-line: #d8c399;
+  --danger: #a3433a;
+  --success: #456843;
+  --diff-add-bg: #edf1e4;
+  --diff-add-text: #456843;
+  --diff-remove-bg: #f7e7e0;
+  --diff-remove-text: #974b43;
+  --graph-1: var(--accent);
+  --graph-2: #987334;
+  --graph-3: #647c8b;
+  --graph-4: #947477;
+  --graph-5: #7f7b55;
+  --shadow: #49362822;
+  --shadow-soft: #4936280d;
+  --shadow-toast: #4936281a;
+}

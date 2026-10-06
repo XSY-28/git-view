@@ -1,0 +1,35 @@
+[
+  {
+    "scope": "head",
+    "order": "topo",
+    "first": "The 3rd batch",
+    "firstPageCommits": 200,
+    "firstPageMerges": 48,
+    "lanes": 18,
+    "twoPageCommits": 400,
+    "uniqueCommits": 400,
+    "milliseconds": 762
+  },
+  {
+    "scope": "all",
+    "order": "date",
+    "first": "What's cooking (2026/10 #02)",
+    "firstPageCommits": 200,
+    "firstPageMerges": 107,
+    "lanes": 84,
+    "twoPageCommits": 400,
+    "uniqueCommits": 400,
+    "milliseconds": 824
+  },
+  {
+    "scope": "all",
+    "order": "topo",
+    "first": "What's cooking (2026/10 #02)",
+    "firstPageCommits": 200,
+    "firstPageMerges": 0,
+    "lanes": 1,
+    "twoPageCommits": 400,
+    "uniqueCommits": 400,
+    "milliseconds": 805
+  }
+]

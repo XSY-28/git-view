@@ -1,0 +1,20 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Git View",
+  "version": "0.2.0",
+  "identifier": "local.git-view.desktop",
+  "mainBinaryName": "git-view-desktop",
+  "build": { "frontendDist": "../../../dist/web" },
+  "app": {
+    "withGlobalTauri": true,
+    "windows": [{ "label": "main", "title": "Git View", "width": 1200, "height": 820, "minWidth": 540, "minHeight": 480, "acceptFirstMouse": true }],
+    "security": { "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src ipc: http://ipc.localhost; object-src 'none'; base-uri 'none'" }
+  },
+  "bundle": {
+    "active": true,
+    "icon": ["icons/icon.png", "icons/icon.icns", "icons/icon.ico"],
+    "targets": ["app"],
+    "resources": { "resources/runtime/": "runtime/", "resources/app/": "app/" },
+    "macOS": { "minimumSystemVersion": "12.0" }
+  }
+}

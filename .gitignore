@@ -1,0 +1,17 @@
+node_modules/
+dist/
+.pnpm-store/
+playwright-report/
+test-results/
+.DS_Store
+*.log
+
+.tooling/
+apps/desktop/src-tauri/target/
+apps/desktop/src-tauri/resources/
+apps/desktop/src-tauri/gen/
+.superpowers/
+/test-repos/
+
+# Local native-dialog screenshot contains the machine username.
+/docs/verification/folder-picker-native.jpg

@@ -1,0 +1,42 @@
+{
+  "name": "git-view",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "本地只读 Git 仓库与差异查看工具",
+  "packageManager": "pnpm@11.7.0",
+  "engines": {
+    "node": ">=24 <25"
+  },
+  "bin": {
+    "git-view": "dist/cli.mjs"
+  },
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:e2e": "playwright test",
+    "check": "pnpm typecheck && pnpm test && pnpm build",
+    "open": "node dist/cli.mjs open --repo \"$PWD\" --json",
+    "inspect": "node dist/cli.mjs inspect --repo \"$PWD\" --json",
+    "stop": "node dist/cli.mjs shutdown --json",
+    "build:desktop": "node scripts/build-desktop.mjs",
+    "verify:installed": "node scripts/verify-installed.mjs"
+  },
+  "dependencies": {
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
+    "zod": "4.6.5"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.63.0",
+    "@tauri-apps/cli": "2.12.1",
+    "@types/node": "24.10.1",
+    "@types/react": "19.2.2",
+    "@types/react-dom": "19.2.2",
+    "esbuild": "0.28.2",
+    "typescript": "5.9.3",
+    "vite": "8.3.2",
+    "vitest": "5.0.3"
+  }
+}

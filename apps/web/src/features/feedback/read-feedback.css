@@ -1,0 +1,132 @@
+.read-feedback.read-feedback {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  height: var(--read-feedback-height, 32px);
+  min-height: var(--read-feedback-height, 32px);
+  flex: none;
+  margin: 0;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 16px;
+}
+
+.read-feedback.read-feedback--compact {
+  position: relative;
+  height: var(--read-feedback-height, 24px);
+  min-height: var(--read-feedback-height, 24px);
+}
+
+.read-feedback > .read-feedback-indicator {
+  width: 8px;
+  height: 8px;
+  min-width: 8px;
+  flex: none;
+  border: 1px solid currentColor;
+  border-radius: 50%;
+  opacity: .6;
+}
+
+.read-feedback > .read-feedback-indicator[data-visible="false"] {
+  visibility: hidden;
+}
+
+.read-feedback[data-phase="loading"] > .read-feedback-indicator {
+  border-color: var(--line);
+  border-top-color: var(--accent);
+  opacity: 1;
+  animation: read-feedback-spin .8s linear infinite;
+}
+
+.read-feedback[data-phase="error"] {
+  color: var(--danger);
+}
+
+.read-feedback[data-phase="stale"] {
+  color: var(--warning);
+}
+
+.read-feedback > .read-feedback-text {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  height: 100%;
+  flex: 1;
+}
+
+.read-feedback .read-feedback-message {
+  min-width: 0;
+  flex: 1;
+  max-height: 100%;
+  overflow: auto;
+  overflow-wrap: anywhere;
+  white-space: normal;
+  text-overflow: clip;
+  scrollbar-width: thin;
+}
+
+.read-feedback--compact .read-feedback-message {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.read-feedback-message:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+/* The same live region becomes readable with a keyboard; its wrapper keeps the slot stable. */
+.read-feedback--compact[data-expandable="true"] .read-feedback-message:focus {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  z-index: 20;
+  max-height: min(240px, 40vh);
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--paper);
+  box-shadow: 0 4px 12px var(--shadow);
+  overflow: auto;
+  white-space: normal;
+  text-overflow: clip;
+  overscroll-behavior: contain;
+}
+
+.read-feedback > .read-feedback-actions {
+  display: inline-flex;
+  justify-content: flex-end;
+  align-items: center;
+  flex: 0 0 64px;
+  width: 64px;
+  overflow: visible;
+  white-space: nowrap;
+}
+
+.read-feedback .read-feedback-actions > button {
+  display: inline-flex;
+  width: auto;
+  padding: 2px 0;
+  color: var(--accent);
+  font-size: inherit;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.read-feedback .read-feedback-actions > button:hover {
+  text-decoration: underline;
+}
+
+@keyframes read-feedback-spin {
+  to { transform: rotate(360deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .read-feedback[data-phase="loading"] > .read-feedback-indicator {
+    animation: none;
+    border-color: var(--accent);
+  }
+}

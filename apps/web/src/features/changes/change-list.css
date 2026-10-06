@@ -1,0 +1,51 @@
+.change-list {
+  min-width: 0;
+}
+
+.change-list-filter {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  background: var(--canvas);
+  border-bottom: 1px solid var(--line);
+}
+
+/* Keep the filter outside the scroll area so Home never hides the focused row. */
+.commit-summary .commit-file-list {
+  max-height: none;
+  overflow: visible;
+}
+
+.filtered-commit-files {
+  max-height: 160px;
+  overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+}
+
+.change-list-filter input {
+  width: 100%;
+  min-width: 0;
+  height: 30px;
+  padding: 4px 8px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--paper);
+  color: var(--ink);
+  font: inherit;
+  font-size: 12px;
+}
+
+.change-list-filter > span {
+  flex: none;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.file-filter-empty {
+  margin: 0;
+  padding: 16px;
+  color: var(--muted);
+  font-size: 12px;
+}

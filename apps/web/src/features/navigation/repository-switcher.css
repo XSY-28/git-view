@@ -1,0 +1,135 @@
+.repository-switcher {
+  position: relative;
+  min-width: 0;
+  max-width: min(40vw, 480px);
+}
+
+.repository-switcher.repository-title h1 {
+  margin: 0;
+  font: inherit;
+  letter-spacing: normal;
+}
+
+.repository-switcher-trigger {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  min-width: 0;
+  padding: 8px 10px;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  font-size: 15px;
+  font-weight: 600;
+  text-align: left;
+}
+
+.repository-switcher-trigger:hover,
+.repository-switcher-trigger[aria-expanded="true"] {
+  background: var(--accent-soft);
+  border-color: var(--line);
+}
+
+.repository-switcher-trigger > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.repository-switcher svg {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  flex: none;
+}
+
+.repository-switcher-folder { width: 20px; height: 20px; color: var(--icon-accent); }
+.repository-switcher-chevron { width: 15px; height: 15px; color: var(--muted); }
+
+.repository-switcher-panel {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  z-index: 30;
+  width: 370px;
+  max-width: calc(100vw - 32px);
+  max-height: calc(100dvh - 84px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 7px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--paper);
+  box-shadow: 0 12px 36px var(--shadow), 0 2px 6px var(--shadow-soft);
+  font-size: 13px;
+  font-weight: 400;
+}
+
+.repository-switcher-open {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  gap: 16px;
+  padding: 10px;
+  border-radius: 4px;
+  text-align: left;
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.repository-switcher-open:hover,
+.repository-switcher-group button:hover,
+.repository-switcher-copy:hover { background: var(--accent-soft); }
+
+.repository-switcher-open kbd {
+  color: var(--muted);
+  font: 11px var(--mono);
+  font-weight: 400;
+}
+
+.repository-switcher-current,
+.repository-switcher-group,
+.repository-switcher-manual {
+  margin-top: 7px;
+  padding-top: 9px;
+  border-top: 1px solid var(--line);
+}
+
+.repository-switcher-current { padding: 10px; }
+.repository-switcher-current > span,
+.repository-switcher-group h2 { color: var(--muted); font-size: 11px; font-weight: 500; }
+.repository-switcher-current > div { display: flex; align-items: center; gap: 8px; margin-top: 5px; }
+.repository-switcher-current code { min-width: 0; flex: 1; overflow-wrap: anywhere; font-size: 11px; line-height: 1.6; }
+.repository-switcher-copy { flex: none; display: grid; place-items: center; padding: 7px; border-radius: 4px; color: var(--muted); }
+.repository-switcher-copy svg { width: 17px; height: 17px; }
+
+.repository-switcher-group h2 { padding: 0 10px 5px; }
+.repository-switcher-group button {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 100%;
+  padding: 9px 10px;
+  border-radius: 4px;
+  text-align: left;
+  font-size: 13px;
+}
+.repository-switcher-group button > span { display: flex; align-items: baseline; gap: 8px; width: 100%; overflow-wrap: anywhere; }
+.repository-switcher-group button > small { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); font-size: 10px; }
+.repository-switcher-active { margin-left: auto; flex: none; color: var(--accent); font-size: 10px; font-weight: 400; }
+.repository-switcher-error { margin: 8px 10px; color: var(--danger); font-size: 12px; line-height: 1.7; overflow-wrap: anywhere; }
+.repository-switcher-manual { padding: 11px 10px 6px; }
+.repository-switcher-manual summary { cursor: pointer; color: var(--muted); font-size: 12px; }
+.repository-switcher-manual form { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.repository-switcher-manual input { width: 100%; min-width: 0; padding: 9px 10px; border: 1px solid var(--line); border-radius: 4px; background: var(--canvas); color: var(--ink); font: 12px var(--mono); }
+.repository-switcher-manual .button { margin-left: auto; padding: 7px 10px; font-size: 12px; }
+
+@media (max-width: 760px) {
+  .repository-switcher { max-width: 100%; }
+  .repository-switcher-trigger { padding-left: 4px; padding-right: 7px; font-size: 14px; }
+  .repository-switcher-panel { width: min(370px, calc(100vw - 32px)); }
+}

@@ -51,7 +51,7 @@ test.beforeAll(async () => {
 test.afterAll(async () => { if (origin) await call({ action: 'shutdown' }).catch(() => {}); if (folder) await rm(folder, { recursive: true, force: true }); });
 
 type ResponseChange = 'success' | 'error' | 'wrong-stamp' | 'late-content' | 'stale';
-async function holdNext(page: Page, action: string, failureMessage = `fixture ${action} failed`) {
+async function holdNext(page: Page, action: string, failureMessage = `fixture ${action} failed`, readyDelayMs = 0) {
   let release!: (change: ResponseChange) => void; let started!: () => void;
   const barrier = new Promise<ResponseChange>(resolve => { release = resolve; });
   const pending = new Promise<void>(resolve => { started = resolve; });
@@ -61,6 +61,7 @@ async function holdNext(page: Page, action: string, failureMessage = `fixture ${
     intercepted = true;
     const response = await route.fetch();
     const body = await response.json();
+    if (readyDelayMs) await new Promise(resolve => setTimeout(resolve, readyDelayMs));
     started(); const change = await barrier;
     let json = body;
     if (change === 'error') json = { schemaVersion: 1, ok: false, stamp: body.stamp, requestId: route.request().postDataJSON().requestId, finishedAt: body.stamp.finishedAt, error: { code: 'INTERNAL_ERROR', message: failureMessage, retryable: true } };
@@ -97,16 +98,31 @@ async function prepareScroll(page: Page) {
   await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
 }
 
-test('fast refresh keeps a stable refresh action and avoids extra banners or cancel controls', async ({ page }) => {
+test('refresh keeps reading stable before and at the slow feedback threshold', async ({ page }) => {
+  await page.clock.install();
   await page.setViewportSize({ width: 1180, height: 760 }); await open(page); await prepareScroll(page);
+  await page.clock.pauseAt(new Date(await page.evaluate(() => Date.now() + 1000)));
+  await expect(feedback(page, '仓库状态')).toHaveAttribute('data-phase', 'idle');
+  await expect(feedback(page, '文件差异')).toHaveAttribute('data-phase', 'idle');
   const before = await readingState(page);
-  const hold = await holdNext(page, 'change');
+  // The real Git response and test driver may take longer than 800 ms. Pause
+  // browser time so their speed cannot decide which feedback phase we test.
+  // This deliberate wall-clock delay reproduces the slower CI runner's race.
+  const hold = await holdNext(page, 'change', undefined, 1000);
   try {
     await refresh(page); await hold.pending;
     await expect(page.getByRole('button', { name: '刷新仓库', exact: true })).toBeVisible();
     await expect(feedback(page, '文件差异')).toHaveAttribute('data-phase', 'loading');
     await expect(feedback(page, '文件差异')).toHaveAttribute('data-slow', 'false');
+    await page.clock.runFor(799);
+    await expect(feedback(page, '文件差异')).toHaveAttribute('data-slow', 'false');
     await expect(page.getByRole('button', { name: '取消文件差异读取', exact: true })).toHaveCount(0);
+    await expect(page.locator('.info-banner')).toHaveCount(0);
+    expect(await readingState(page)).toEqual(before);
+    await page.clock.runFor(1);
+    await expect(feedback(page, '文件差异')).toHaveAttribute('data-slow', 'true');
+    await expect(page.getByRole('button', { name: '取消文件差异读取', exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: '刷新仓库', exact: true })).toBeVisible();
     await expect(page.locator('.info-banner')).toHaveCount(0);
     expect(await readingState(page)).toEqual(before);
     await hold.finish();

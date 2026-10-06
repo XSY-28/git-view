@@ -11,7 +11,7 @@ import { runStdio } from '../../apps/local/src/stdio';
 import { cleanupFixtures, commit, fixtureGit, repository, temporaryDirectory, write } from '../fixtures/git';
 
 const closers: (() => void | Promise<void>)[] = [];
-afterEach(async () => { for (const close of closers.splice(0)) await close(); cleanupFixtures(); });
+afterEach(async () => { for (const close of closers.splice(0)) await close(); await cleanupFixtures(); });
 async function setup() {
   const root = repository(); write(root, 'selected.txt', 'V1\n'); commit(root);
   write(root, 'selected.txt', 'V2\n'); fixtureGit(root, ['add', '--', 'selected.txt']);

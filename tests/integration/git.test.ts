@@ -1,5 +1,6 @@
 import { afterAll, describe, expect, it } from 'vitest';
 import { chmodSync, existsSync, mkdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { realpath } from 'node:fs/promises';
 import path from 'node:path';
 import { createGitAdapter } from '../../packages/git-cli/src/index.js';
 import { runGit } from '../../packages/git-cli/src/runner.js';
@@ -96,7 +97,7 @@ describe('real read-only Git adapter', () => {
     const second = await adapter.resolveRepository(path.join(linked, 'subdir'));
     expect(second.repositoryId).toBe(first.repositoryId);
     expect(second.worktreeId).not.toBe(first.worktreeId);
-    expect(second.worktreeRoot).toContain('/linked');
+    expect(second.worktreeRoot).toBe(await realpath(linked));
     expect((await adapter.readOverview(first)).changes.staged).toHaveLength(0);
     expect((await adapter.readOverview(second)).changes.staged).toHaveLength(1);
   });

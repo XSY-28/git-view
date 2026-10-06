@@ -19,7 +19,9 @@ async function channel() {
   services.push(await runStdio(createRepositoryQueries(createGitAdapter()), await temporaryDirectory(), input, output));
   const send = async (message: Record<string, unknown>) => {
     const id = randomUUID(); input.write(JSON.stringify({ id, ...message }) + '\n');
-    await expect.poll(() => values.has(id)).toBe(true);
+    // A real overview/navigation reads multiple Git subprocesses. The default
+    // 1-second poll budget expires on Windows before a valid reply is produced.
+    await expect.poll(() => values.has(id), { timeout: 15_000 }).toBe(true);
     return values.get(id);
   };
   return { send, input };

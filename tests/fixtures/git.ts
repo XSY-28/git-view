@@ -1,5 +1,6 @@
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, writeFileSync, readdirSync, lstatSync, readFileSync, readlinkSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, readdirSync, lstatSync, readFileSync, readlinkSync } from 'node:fs';
+import { rm } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
@@ -65,8 +66,10 @@ export function fingerprint(root: string): string {
   visit(root);
   return digest.digest('hex');
 }
-export function cleanupFixtures() {
-  for (const root of fixtureRoots) rmSync(root, { recursive: true, force: true });
+export async function cleanupFixtures() {
+  // Windows releases watcher/child-process handles asynchronously. Bounded
+  // asynchronous retries allow those handles to close before removing fixtures.
+  for (const root of fixtureRoots) await rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
   fixtureRoots.clear();
   isolation = undefined;
 }

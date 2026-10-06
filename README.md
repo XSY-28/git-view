@@ -10,7 +10,7 @@ Git View 是一个本地 Git 图形工具。它把 HEAD、暂存区和工作区�
 
 界面默认英文，顶部可切换为中文并保存选择。仓库名、路径、提交说明、文件内容和 Git 诊断保留原文。仓库由本机 Git 读取，无需远程服务。
 
-当前为桌面预览版。下面的安装和操作流程面向 **macOS Apple silicon**；Windows 暂时只开放查看，Intel Mac 暂不做 CI 检查或打包。
+当前为桌面预览版。下面的安装和操作流程面向 **macOS Apple silicon**；Windows 暂时只开放查看。
 
 ## 安装并打开一个仓库
 
@@ -79,7 +79,6 @@ node scripts/create-demo.mjs
 | --- | --- |
 | macOS Apple silicon | 查看、暂存、提交、本地分支及安装副本已有实机验证；CI 覆盖源码、Rust 宿主、安装流程与浏览器回归。 |
 | Windows | CI 覆盖核心 Git 读取、stdio 与桌面宿主；写入未开放，原生界面与安装尚未实机验证。 |
-| Intel Mac | 暂停 CI 与打包，不作为当前验收目标。 |
 
 - 暂不提供 push、merge、rebase 或历史重写。远程跟踪引用来自本地仓库，不会自动获取远端更新。
 - 二进制、非 UTF-8、超过 1 MiB 或 10,000 行的内容不展开文本预览。没有文本预览不代表文件没有变化。

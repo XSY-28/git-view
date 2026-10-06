@@ -7,7 +7,7 @@ import { type RepositorySession, type RepositoryOperationInput } from '@git-view
 import { createGitAdapter } from '../../packages/git-cli/src/index';
 import { createOperations } from '../../packages/operations/src/index';
 import { createRepositoryWriter } from '../../packages/git-write/src/repository';
-import { cleanupFixtures, commit, fixtureGit as git, repository, temporaryDirectory, write, fingerprint } from '../fixtures/git';
+import { cleanupFixtures, commit, fixtureGit as git, repository, temporaryDirectory, write, fingerprint, GIT_OPERATION_TEST_TIMEOUT } from '../fixtures/git';
 
 afterAll(cleanupFixtures);
 async function setup(unborn = false, timeoutMs?: number) {
@@ -32,7 +32,7 @@ async function execute(f: Awaited<ReturnType<typeof setup>>, input: Parameters<t
   const preview = await f.preview(input); return f.operations.execute(f.session, preview.previewId, randomUUID(), true);
 }
 
-describe.skipIf(process.platform === 'win32')('ordinary commits and local branches', () => {
+describe.skipIf(process.platform === 'win32')('ordinary commits and local branches', { timeout: GIT_OPERATION_TEST_TIMEOUT }, () => {
   it.each([false, true])('commits exactly index V2, retains V3, with correct parents (unborn=%s)', async unborn => {
     const f = await setup(unborn); const previous = unborn ? null : git(f.root, ['rev-parse', 'HEAD']);
     const before = fingerprint(f.root); const shown = await f.preview({ kind: 'commit', message: 'ordinary commit\n\nDetails' });

@@ -6,7 +6,7 @@ import type { RepositorySession } from '@git-view/contracts';
 import { createOperations, type Operations } from '../../packages/operations/src/index.js';
 import { createGitWriteAdapter } from '../../packages/git-write/src/index.js';
 import { createGitAdapter } from '../../packages/git-cli/src/index.js';
-import { cleanupFixtures, commit, fixtureGit as git, repository, temporaryDirectory, write } from '../fixtures/git.js';
+import { cleanupFixtures, commit, fixtureGit as git, repository, temporaryDirectory, write, GIT_OPERATION_TEST_TIMEOUT } from '../fixtures/git.js';
 
 afterAll(cleanupFixtures);
 const hash = (value: string) => createHash('sha256').update(value).digest('hex');
@@ -29,7 +29,7 @@ async function preview(operations: Operations, read: ReturnType<typeof createGit
   return operations.preview(session, { kind, entryIds: [group.find(entry => entry.path === 'chosen.txt')!.id], fingerprint: overview.fingerprint });
 }
 
-describe.skipIf(process.platform === 'win32')('durable file operation coordination (POSIX)', () => {
+describe.skipIf(process.platform === 'win32')('durable file operation coordination (POSIX)', { timeout: GIT_OPERATION_TEST_TIMEOUT }, () => {
   it('stages V3 in full and unstages to V1 while preserving V3 and unselected files', async () => {
     const { root, read, session, operations, directory } = await setup();
     git(root, ['add', '--', 'chosen.txt']); write(root, 'chosen.txt', 'V3\n'); write(root, 'other.txt', 'not selected\n');

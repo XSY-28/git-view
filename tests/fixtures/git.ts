@@ -5,6 +5,11 @@ import os from 'node:os';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
 
+// Multi-step write scenarios run many real Git subprocesses. On the Intel CI
+// runner their combined duration exceeds 30s; individual operation limits and
+// all correctness assertions remain independent of this whole-test budget.
+export const GIT_OPERATION_TEST_TIMEOUT = process.env.CI ? 90_000 : 30_000;
+
 // All fixture mutations are confined to directories created here, never the user's checkout.
 const fixtureRoots = new Set<string>();
 let isolation: { config: string; hooks: string } | undefined;

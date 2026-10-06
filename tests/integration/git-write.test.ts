@@ -3,7 +3,7 @@ import { chmodSync, existsSync, readFileSync, readdirSync, renameSync, rmSync, s
 import path from 'node:path';
 import { createGitAdapter } from '../../packages/git-cli/src/index.js';
 import { createGitWriteAdapter, indexWriteEvidenceSchema, type IndexWriteEvidence, type PreparedIndexOperation } from '../../packages/git-write/src/index.js';
-import { cleanupFixtures, commit, fingerprint, fixtureGit as git, repository, temporaryDirectory, write } from '../fixtures/git.js';
+import { cleanupFixtures, commit, fingerprint, fixtureGit as git, repository, temporaryDirectory, write, GIT_OPERATION_TEST_TIMEOUT } from '../fixtures/git.js';
 
 afterAll(cleanupFixtures);
 const reader = createGitAdapter();
@@ -24,7 +24,7 @@ async function execute(prepared: PreparedIndexOperation) {
 const index = (root: string) => readFileSync(path.join(root, '.git/index'));
 const worktree = (root: string) => Object.fromEntries(readdirSync(root).filter((name) => name !== '.git').map((name) => [name, readFileSync(path.join(root, name))]));
 
-describe.skipIf(process.platform === 'win32')('isolated whole-file index writes (POSIX)', () => {
+describe.skipIf(process.platform === 'win32')('isolated whole-file index writes (POSIX)', { timeout: GIT_OPERATION_TEST_TIMEOUT }, () => {
   it('previews read-only; replaces partial V2 with complete V3 and preserves unrelated index/worktree bytes', async () => {
     const root = repository();
     write(root, 'file', 'V1\n'); write(root, 'other', 'original\n'); commit(root);

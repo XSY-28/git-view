@@ -1,6 +1,6 @@
 import { afterAll, describe, expect, it } from 'vitest';
 import path from 'node:path';
-import { realpathSync } from 'node:fs';
+import { realpath } from 'node:fs/promises';
 import { queryKey, requestSchema } from '@git-view/contracts';
 import { createRepositoryQueries } from '../../packages/core/src/index.js';
 import { createGitAdapter } from '../../packages/git-cli/src/index.js';
@@ -56,7 +56,7 @@ describe('read-only repository navigation', () => {
     const adapter = createGitAdapter();
     const first = await adapter.resolveRepository(root);
     const navigation = await adapter.listNavigation(first);
-    expect(navigation.worktrees).toContainEqual({ path: realpathSync(linked), branch: 'refs/heads/other', headOid: main, locked: '保留\n工作区' });
+    expect(navigation.worktrees).toContainEqual({ path: await realpath(linked), branch: 'refs/heads/other', headOid: main, locked: '保留\n工作区' });
     const second = await adapter.resolveRepository(navigation.worktrees.find(tree => tree.branch === 'refs/heads/other')!.path);
     expect(second.repositoryId).toBe(first.repositoryId);
     expect(second.worktreeId).not.toBe(first.worktreeId);

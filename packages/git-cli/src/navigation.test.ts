@@ -1,5 +1,6 @@
 import { afterEach, expect, it } from 'vitest';
-import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync } from 'node:fs';
+import { realpath } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import type { RepositoryIdentity } from '@git-view/contracts';
@@ -15,7 +16,7 @@ it('uses canonical filesystem paths for navigation while retaining missing workt
   const alias = path.join(directory, 'repository alias'); symlinkSync(root, alias, 'junction');
   const missing = path.join(directory, 'missing worktree');
   const oid = 'a'.repeat(40);
-  const repository: RepositoryIdentity = { repositoryId: 'repo', worktreeId: 'tree', worktreeRoot: realpathSync(root), gitDir: root, commonGitDir: root };
+  const repository: RepositoryIdentity = { repositoryId: 'repo', worktreeId: 'tree', worktreeRoot: await realpath(root), gitDir: root, commonGitDir: root };
   const read = createNavigationReader(async (_repository, args) => args[0] === 'worktree'
     ? Buffer.from(`worktree ${alias}\0HEAD ${oid}\0branch refs/heads/main\0locked 保留\n工作区\0\0worktree ${missing}\0prunable gitdir file points to non-existent location\0\0`)
     : Buffer.alloc(0), async () => ({ kind: 'branch', branch: 'main', oid }), DEFAULT_READ_LIMITS);

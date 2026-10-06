@@ -1,29 +1,21 @@
-# Git 可视化工具
+# Git View
 
-本地 Git 可视化工具，用于查看工作区、暂存区、提交历史和仓库引用。
+[![Source checks](https://github.com/XSY-28/git-view/actions/workflows/check.yml/badge.svg)](https://github.com/XSY-28/git-view/actions/workflows/check.yml) · [MIT License](LICENSE)
 
-界面默认英文，可在顶部选择 **English / 中文**。语言选择保存在本机应用设置中，退出、重新打开或切换仓库后继续使用上次选择；仓库名、文件内容与提交说明保留原文。验证结果见 [语言切换验收](docs/verification/2026-10-06-language.md)。
+本地 Git 可视化工具，用于查看工作区、暂存区、提交历史、分支与标签。支持整文件暂存、普通提交和本地分支操作，每次写入先预览再确认。仓库内容在本机处理，无需远程服务。
 
-已支持按文件暂存、取消暂存、普通提交、创建本地分支与切换本地分支。每次先预览再确认，执行结果可核对；CLI/inspect 与历史查询仍只读。实现与验证边界见 [暂存验收](docs/verification/2026-10-06-stage-files.md) 和 [提交与分支验收](docs/verification/2026-10-06-commit-branches.md)。
+界面支持 **English / 中文**，默认英文；语言选择在本机保存，仓库名、文件内容与提交说明保留原文。
 
-已实现第一轮 MVP 和第二阶段第一批（2A）：只读桌面窗口、仓库导航、并排差异和自动刷新。macOS Apple silicon 的安装副本、CLI 与原生界面已运行验证；其他平台和 Codex skill 自动发现的证据边界见 [2A 验收记录](docs/verification/v0.2-a.md)。
+![Git View 暖色界面与提交历史](docs/verification/screenshots/warm-theme-history.png)
 
-界面以仓库切换、历史范围、文件列表和差异查看为主体。已完成入口与布局、差异与文件导航、刷新与反馈三轮调整，见 [第一轮验收](docs/verification/2026-10-06-interface-round1.md)、[第二轮验收](docs/verification/2026-10-06-interface-round2.md) 和 [第三轮验收](docs/verification/2026-10-06-interface-round3.md)。此前的教学界面移除记录见 [界面调整验收](docs/verification/2026-10-06-tool-ui.md)。
+当前为桌面预览版。macOS Apple silicon 的安装副本与原生界面已有实机验收；GitHub CI 检查 macOS ARM、macOS Intel 与 Windows。Windows 目前提供查看功能，写入尚未开放；其他平台的桌面安装和原生交互仍需实机验证。具体证据见 [2A 验收记录](docs/verification/v0.2-a.md)、[暂存验收](docs/verification/2026-10-06-stage-files.md)、[提交与分支验收](docs/verification/2026-10-06-commit-branches.md) 和 [语言切换验收](docs/verification/2026-10-06-language.md)。
 
-当前采用奶油白、浅米色与陶土色主题，界面色值集中于 [theme.css](apps/web/src/theme.css)，桌面图标同步调整。截图及验证结果见 [暖色主题验收](docs/verification/2026-10-06-warm-theme.md)。
+从源码开始：
 
-请从 [MVP 开工文档](docs/MVP-KICKOFF.md) 开始。文档包含：
-
-- 首版功能、明确后置的需求与用户流程。
-- 推荐架构、替代方案、模块职责和未来需求的扩展方式。
-- Codex 轻量接入及后续 MCP、DSH 的位置。
-- 施工里程碑、验收场景、测试方法及研究来源。
-
-第一版范围是本地只读查看与一个 Codex 入口，任务前后基线和 Git 写操作放在后续阶段。
-
-接下来的工作见 [第二、第三阶段实施计划](docs/superpowers/plans/2026-10-06-next-stages.md)。按日常 Git 工具的使用目标，暂存、普通提交和本地分支操作已前移并实现；后续安排比较、历史调查和前后变化对照，补齐 2B。merge/rebase、历史重写与应用内推送仍不在当前功能范围。
-
-现有查看器的交互调整按 [三轮界面优化计划](docs/superpowers/plans/2026-10-06-interface-refinement.md) 单独跟踪。第一轮整理布局和入口，第二轮优化差异查看与文件导航，第三轮统一刷新反馈并回归验收；界面轮次不等同于上述产品阶段。
+```sh
+git clone https://github.com/XSY-28/git-view.git
+cd git-view
+```
 
 ## 桌面预览版
 
@@ -33,9 +25,13 @@
 pnpm install --frozen-lockfile
 pnpm build
 pnpm build:desktop
+pnpm install:desktop --dry-run
+pnpm install:desktop
 ```
 
-双击 `apps/desktop/src-tauri/target/release/bundle/macos/Git View.app`，使用原生窗口选择仓库。可将 `.app` 复制到自己的应用目录；运行时无需另装 Node、Swift 或 Rust，仍需系统 Git。当前为未公证的本地测试包，Windows/macOS Intel 尚未实机验收。
+macOS 使用 `pnpm install:desktop` 安装到固定的 `~/Applications/Git View.app`，之后从 Spotlight 或该路径打开。安装前先退出 Git View；`--dry-run` 只检查构建与安装状态，不写文件。安装脚本核对应用身份、构建清单与文件哈希，将旧安装压成 ZIP 保存到 `~/Library/Application Support/Git View/backups/`，验证替换成功后注销并移除构建目录中的 `.app`，避免每次更新增加同名入口。构建命令本身不会修改安装目录；再次安装前需要重新构建。测试副本应在测试结束后注销并删除，旧版本请保留为 ZIP。流程与验收边界见 [安装验证说明](docs/verification/2026-10-06-desktop-install.md)。
+
+运行时无需另装 Node、Swift 或 Rust，仍需系统 Git。当前为未公证的本地测试包，Windows/macOS Intel 尚未实机验收。
 
 桌面 CLI 直接使用随包可执行文件：
 
@@ -99,7 +95,9 @@ pnpm stop
 ```sh
 pnpm typecheck
 pnpm test
+pnpm test:install-desktop # macOS 安装流程测试；其他平台跳过
 pnpm build
+pnpm exec playwright install chrome
 pnpm test:e2e
 node scripts/benchmark.mjs
 ```
@@ -115,3 +113,13 @@ node scripts/verify-lifecycle.mjs --repo "/absolute/path/to/test-repository"
 ```
 
 代码目录与依赖方向见 [施工基线](docs/decisions/0001-implementation-baseline.md)。依赖版本以 `pnpm-lock.yaml` 固定；源码通过 `packages/contracts` 的 Zod schema 共享传输约定。
+
+## 架构与贡献
+
+React 前端与 Tauri 桌面宿主共享 TypeScript Git 核心；读取、写入预览、执行队列与回执分别维护契约。查看 [施工基线](docs/decisions/0001-implementation-baseline.md)、[桌面架构](docs/decisions/0002-desktop-host.md) 和 [MVP 设计文档](docs/MVP-KICKOFF.md) 了解模块职责与设计边界。后续工作见 [实施计划](docs/superpowers/plans/2026-10-06-next-stages.md)。merge/rebase、历史重写和应用内推送尚未实现。
+
+欢迎通过 [Issues](https://github.com/XSY-28/git-view/issues) 报告问题或提交 Pull Request。报告时请提供平台、版本、复现步骤及预期结果；涉及仓库内容的日志或截图请先移除私人信息。修改后运行 `pnpm check`，界面变更另运行 `pnpm test:e2e`，安装流程变更运行 `pnpm test:install-desktop`。测试仓库使用临时目录。
+
+## 许可证
+
+本项目源码采用 [MIT 许可证](LICENSE)。桌面包随附 Node.js 运行时的许可声明，见 [Node.js LICENSE](apps/desktop/licenses/node-v24.19.0-LICENSE)；第三方依赖保留各自许可证。

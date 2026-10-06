@@ -27,6 +27,9 @@ jobs:
       - name: Windows core Git and stdio tests (HTTP fallback is POSIX only)
         if: runner.os == 'Windows'
         run: pnpm exec vitest run --exclude tests/integration/transport.test.ts
+      - name: macOS desktop installation and recovery tests
+        if: runner.os == 'macOS'
+        run: pnpm test:install-desktop
       - run: pnpm build
       - run: node scripts/build-desktop.mjs --prepare-only
       - run: cargo check --locked --manifest-path apps/desktop/src-tauri/Cargo.toml

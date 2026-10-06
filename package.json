@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "本地只读 Git 仓库与差异查看工具",
+  "description": "本地 Git 历史、差异查看与预览确认操作工具",
   "packageManager": "pnpm@11.7.0",
   "engines": {
     "node": ">=24 <25"
@@ -21,6 +21,8 @@
     "inspect": "node dist/cli.mjs inspect --repo \"$PWD\" --json",
     "stop": "node dist/cli.mjs shutdown --json",
     "build:desktop": "node scripts/build-desktop.mjs",
+    "install:desktop": "node scripts/install-desktop.mjs",
+    "test:install-desktop": "node --test scripts/install-desktop.test.mjs",
     "verify:installed": "node scripts/verify-installed.mjs"
   },
   "dependencies": {
@@ -38,5 +40,6 @@
     "typescript": "5.9.3",
     "vite": "8.3.2",
     "vitest": "5.0.3"
-  }
+  },
+  "license": "MIT"
 }

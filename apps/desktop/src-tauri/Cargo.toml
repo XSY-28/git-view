@@ -2,7 +2,8 @@
 name = "git-view-desktop"
 version = "0.2.0"
 edition = "2021"
-description = "Thin desktop host for the shared read-only Git core"
+description = "Desktop host for local Git viewing and previewed operations"
+license = "MIT"
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }

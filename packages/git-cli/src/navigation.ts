@@ -2,6 +2,7 @@ import type { HeadState, Navigation, NavigationRef, RepositoryIdentity } from '@
 import { GitReadError } from './runner.js';
 import { splitNul, utf8 } from './parse.js';
 import type { ReadLimits } from './limits.js';
+import { realpath } from 'node:fs/promises';
 
 type Run = (repository: RepositoryIdentity, args: string[], signal?: AbortSignal) => Promise<Buffer>;
 
@@ -49,7 +50,18 @@ export function createNavigationReader(run: Run, readHead: (repository: Reposito
   const snapshot = async (repository: RepositoryIdentity, signal?: AbortSignal): Promise<Navigation> => {
     const head = await readHead(repository, signal);
     const refs = await readRefs(repository, run, signal);
-    const worktrees = parseWorktrees(await run(repository, ['worktree', 'list', '--porcelain', '-z'], signal));
+    const parsed = parseWorktrees(await run(repository, ['worktree', 'list', '--porcelain', '-z'], signal));
+    // Git for Windows uses forward slashes and may expand short path names.
+    // Use the same filesystem identity as resolveRepository and RecentStore.
+    const worktrees = await Promise.all(parsed.map(async tree => {
+      try { return { ...tree, path: await realpath(tree.path) }; }
+      catch (error) {
+        const code = (error as NodeJS.ErrnoException).code;
+        // Missing/prunable worktrees still belong in the navigation list.
+        if (code === 'ENOENT' || code === 'ENOTDIR') return tree;
+        throw error;
+      }
+    }));
     return { refs: refs.map(ref => ({ ...ref, ...(head.kind !== 'detached' && ref.name === `refs/heads/${head.branch}` ? { current: true } : {}) })), worktrees };
   };
   return async (repository: RepositoryIdentity, signal?: AbortSignal): Promise<Navigation> => {

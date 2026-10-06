@@ -35,6 +35,19 @@ async function graphLanes(page: Page) {
   // Inspect the actual rendered SVG nodes, excluding the decorative HEAD ring.
   return page.locator('.commit-graph circle[r="4.5"]').evaluateAll(nodes => [...new Set(nodes.map(node => node.getAttribute('cx')))]);
 }
+async function expectRenderedHistory(page: Page, history: HistoryPage) {
+  // ResizeObserver changes the virtual window without changing the loaded
+  // history. Check every currently rendered row against authentic server OIDs.
+  await expect.poll(async () => {
+    const rows = await page.locator('.commit-row').evaluateAll(nodes => nodes.map(node => ({
+      index: Number(node.getAttribute('data-row')), title: node.getAttribute('title') || '',
+    })));
+    return rows.length > 0 && rows.every(row => {
+      const commit = history.commits[row.index];
+      return commit !== undefined && row.title.split('\n').includes(commit.oid);
+    });
+  }).toBe(true);
+}
 async function snapshot() {
   const linkedGitDir = (await readFile(join(linked, '.git'), 'utf8')).trim().replace(/^gitdir: /, '');
   const paths = [join(repo, '.git/HEAD'), join(repo, '.git/index'), join(repo, 'file.txt'), join(linkedGitDir, 'HEAD'), join(linkedGitDir, 'index'), join(linked, 'file.txt')];
@@ -152,14 +165,21 @@ test('late sort responses and late pagination cannot replace the current orderin
     await page.getByRole('button', { name: '刷新仓库', exact: true }).click();
     await expect.poll(() => sortRequests.length).toBeGreaterThan(originalSortCount);
     await Promise.all(sortRequests.map(request => request.ready.promise));
+    const dateResponse = historyResponse(page, 'date');
     await order.selectOption('date');
+    const date = await historyData(await dateResponse);
     await expect(page.locator('.commit-row[data-row="1"]')).toContainText('MAIN merge feature');
     await expect(page.locator('.history-read-state')).toHaveAttribute('data-phase', 'idle');
-    const dateRows = await page.locator('.commit-row').allTextContents();
+    expect(date.commits).toHaveLength(200);
+    await expectRenderedHistory(page, date);
+    // Exercise the same virtual-window change that happens when its initial
+    // height measurement arrives, while obsolete responses are still held.
+    await page.setViewportSize({ width: 1440, height: 720 });
     holdTopo = false;
     await releaseAll(sort, sortRequests);
     await expect(order).toHaveValue('date');
-    await expect(page.locator('.commit-row')).toHaveText(dateRows);
+    await expectRenderedHistory(page, date);
+    await expect(page.getByRole('button', { name: /提交历史/ }).first()).toContainText('200');
     await expect(page.locator('.commit-row[data-row="1"]')).toContainText('MAIN merge feature');
     await expect(page.locator('.history-read-state')).toHaveAttribute('data-phase', 'idle');
 
@@ -175,14 +195,18 @@ test('late sort responses and late pagination cannot replace the current orderin
     await page.getByRole('button', { name: /继续加载 200 条/ }).click();
     await expect.poll(() => pageRequests.length).toBeGreaterThan(originalPageCount);
     await Promise.all(pageRequests.map(request => request.ready.promise));
+    const topoResponse = historyResponse(page, 'topo');
     await order.selectOption('topo');
+    const topo = await historyData(await topoResponse);
     await expect(page.locator('.history-read-state')).toHaveAttribute('data-phase', 'idle');
     await expect.poll(() => graphLanes(page)).toEqual(['15']);
-    const topoRows = await page.locator('.commit-row').allTextContents();
+    expect(topo.commits).toHaveLength(200);
+    await expectRenderedHistory(page, topo);
+    await page.setViewportSize({ width: 1440, height: 960 });
     holdDatePage = false;
     await releaseAll(pagination, pageRequests);
     await expect(order).toHaveValue('topo');
-    await expect(page.locator('.commit-row')).toHaveText(topoRows);
+    await expectRenderedHistory(page, topo);
     await expect(page.getByRole('button', { name: /提交历史/ }).first()).toContainText('200');
     await expect(page.locator('.commit-row').filter({ hasText: 'MAIN merge feature' })).toHaveCount(0);
     await expect(page.locator('.history-read-state')).toHaveAttribute('data-phase', 'idle');

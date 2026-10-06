@@ -46,8 +46,16 @@ it('filesystem events invalidate worktree observations and watcher cleanup relea
   const queries = createRepositoryQueries(createGitAdapter()); services.push(queries);
   const session = await queries.open(root); const watchers = new RepositoryWatchers(); services.push(watchers);
   const first = watchers.state(session.repository); expect(first.watching).toBe(true);
+  // Native fs.watch has no ready event. Establish an observable event stream
+  // before testing a single subsequent write; do not rely on immediate startup.
+  let probe = 0;
+  await expect.poll(() => {
+    write(root, '.watch-ready', String(probe++));
+    return watchers.state(session.repository).revision;
+  }, { timeout: 5000 }).toBeGreaterThan(first.revision);
+  const ready = watchers.state(session.repository);
   await write(root, 'a.txt', 'two\n');
-  await expect.poll(() => watchers.state(session.repository).revision, { timeout: 5000 }).toBeGreaterThan(first.revision);
+  await expect.poll(() => watchers.state(session.repository).revision, { timeout: 5000 }).toBeGreaterThan(ready.revision);
   watchers.close();
 });
 it('stdin closure cancels an in-flight Git query', async () => {

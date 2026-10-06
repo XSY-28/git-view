@@ -19,7 +19,11 @@ describe('application language preferences', () => {
     expect(await new PreferencesStore(path).read()).toEqual({ schemaVersion: 1, language: 'zh-CN' });
     await store.setLanguage('en');
     expect(await new PreferencesStore(path).read()).toEqual(defaultPreferences);
-    expect((await stat(join(path, 'preferences.json'))).mode & 0o777).toBe(0o600);
+    // Windows stat does not represent separate owner/group/other permissions.
+    // Persistence above is cross-platform; the private mode is a POSIX check.
+    if (process.platform !== 'win32') {
+      expect((await stat(join(path, 'preferences.json'))).mode & 0o777).toBe(0o600);
+    }
   });
   it('serializes rapid changes and can save again after a failed write', async () => {
     const path = await directory(); const store = new PreferencesStore(path);

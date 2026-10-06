@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect } from './fixtures';
 import { execFileSync } from 'node:child_process';
 import { mkdtemp, mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { devNull, tmpdir } from 'node:os';
@@ -101,6 +101,7 @@ async function raceFixture(page: import('@playwright/test').Page, options: { ini
     if (url.pathname === '/api/watch') { await route.fulfill({ json: success({ revision: 0, watching: true }) }); return; }
     if (url.pathname === '/api') {
       const request = route.request().postDataJSON(); actions.push(request);
+      if (request.action === 'preferences') { await route.fulfill({ json: success({ schemaVersion: 1, language: 'zh-CN' }) }); return; }
       if (request.action === 'recents') { if (recentCalls++ === 0) await options.recents; await route.fulfill({ json: success([{ path: '/fixture/A', worktreeId: 'A', openedAt: '2026-10-06T00:00:00Z' }]) }).catch(() => undefined); return; }
       if (request.action === 'open') { await options.open; const name = request.path.split('/').at(-1); session = { sessionId: name, generation: 0, repository: { repositoryId: name, worktreeId: name, worktreeRoot: request.path, gitDir: `${request.path}/.git`, commonGitDir: `${request.path}/.git` } }; await route.fulfill({ json: success(session) }); return; }
       const { queryKey } = await import('../../packages/contracts/src/index');

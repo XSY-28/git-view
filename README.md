@@ -2,6 +2,8 @@
 
 本地 Git 可视化工具，用于查看工作区、暂存区、提交历史和仓库引用。
 
+界面默认英文，可在顶部选择 **English / 中文**。语言选择保存在本机应用设置中，退出、重新打开或切换仓库后继续使用上次选择；仓库名、文件内容与提交说明保留原文。验证结果见 [语言切换验收](docs/verification/2026-10-06-language.md)。
+
 已支持按文件暂存、取消暂存、普通提交、创建本地分支与切换本地分支。每次先预览再确认，执行结果可核对；CLI/inspect 与历史查询仍只读。实现与验证边界见 [暂存验收](docs/verification/2026-10-06-stage-files.md) 和 [提交与分支验收](docs/verification/2026-10-06-commit-branches.md)。
 
 已实现第一轮 MVP 和第二阶段第一批（2A）：只读桌面窗口、仓库导航、并排差异和自动刷新。macOS Apple silicon 的安装副本、CLI 与原生界面已运行验证；其他平台和 Codex skill 自动发现的证据边界见 [2A 验收记录](docs/verification/v0.2-a.md)。

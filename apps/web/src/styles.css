@@ -1341,6 +1341,11 @@ code {
 .app-mark svg { width: 25px; height: 25px; stroke: var(--icon-accent); fill: var(--canvas); stroke-width: 1.8; }
 .head-caption { color: var(--muted); font-size: 11px; white-space: nowrap; }
 .toolbar-status { display: flex; align-items: center; gap: 18px; margin-left: auto; flex: none; }
+.language-setting { position: relative; flex: none; }
+.language-selector { max-width: 100px; padding: 5px 7px; border: 1px solid var(--line); border-radius: 4px; background: var(--paper); color: var(--ink); font: inherit; font-size: 11px; cursor: pointer; }
+.language-selector:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.language-selector:disabled { opacity: .6; cursor: wait; }
+.language-error { position: absolute; top: calc(100% + 8px); right: 0; z-index: 60; width: 240px; padding: 10px; border: 1px solid var(--line); border-radius: 4px; color: var(--danger); background: var(--paper); font-size: 12px; }
 .reference-empty { font-size: 12px; color: var(--muted); padding: 8px 6px; }
 @media(max-width:1000px) {
   .app-header { gap: 12px; }
@@ -1358,4 +1363,6 @@ code {
   .head-caption { font-size: 10px; }
   .read-status { font-size: 10px; }
   .toolbar-status { margin-left: 0; }
+  .language-setting { position: absolute; top: 13px; right: 16px; }
+  .toolbar-status .readonly { display: none; }
 }

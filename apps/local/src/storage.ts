@@ -3,7 +3,7 @@ import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
-import { recentSchema, type RecentRepository, type RepositoryIdentity } from '@git-view/contracts';
+import { defaultPreferences, languageSchema, preferencesSchema, recentSchema, type Language, type Preferences, type RecentRepository, type RepositoryIdentity } from '@git-view/contracts';
 
 export const instanceSchema = z.object({ schemaVersion: z.literal(1), instanceId: z.string().min(20), port: z.number().int().min(1).max(65535), cliToken: z.string().min(32), pid: z.number().int().positive(), startedAt: z.string() });
 export type InstanceRecord = z.infer<typeof instanceSchema>;
@@ -30,6 +30,25 @@ export async function readInstance(directory: string): Promise<InstanceRecord | 
 }
 export async function removeOwnInstance(directory: string, instanceId: string) {
   if ((await readInstance(directory))?.instanceId === instanceId) await unlink(join(directory, 'instance.json')).catch(() => {});
+}
+
+export class PreferencesStore {
+  private writes: Promise<void> = Promise.resolve();
+  constructor(private directory: string) {}
+  async read(): Promise<Preferences> {
+    try { return preferencesSchema.parse(JSON.parse(await readFile(join(this.directory, 'preferences.json'), 'utf8'))); }
+    catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT' && !(error instanceof SyntaxError) && !(error instanceof z.ZodError)) throw error;
+      return { ...defaultPreferences };
+    }
+  }
+  async setLanguage(language: Language): Promise<Preferences> {
+    const preferences: Preferences = { schemaVersion: 1, language: languageSchema.parse(language) };
+    const write = this.writes.then(() => writePrivateJson(join(this.directory, 'preferences.json'), preferences));
+    this.writes = write.catch(() => {});
+    await write;
+    return preferences;
+  }
 }
 
 export class RecentStore {

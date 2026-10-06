@@ -5,6 +5,8 @@ export * from './navigation';
 import { appErrorSchema, overviewSchema, sessionSchema, diffSchema, historySchema, commitDetailSchema, folderChoiceSchema, recentSchema, stampSchema, type RepositoryIdentity, type RepositorySession, type RawOverview, type ChangeEntry, type Diff, type History, type CommitDetail } from './models';
 export * from './models';
 export * from './operations';
+export * from './preferences';
+import { languageSchema, preferencesSchema } from './preferences';
 
 // Transport inputs are validated at the HTTP boundary; arbitrary Git commands are never accepted.
 const baseRequest = { schemaVersion: z.literal(1), requestId: z.string().min(1).max(100) };
@@ -13,6 +15,8 @@ export const requestSchema = z.discriminatedUnion('action', [
   z.object({ ...baseRequest, action: z.literal('open'), path: z.string().min(1).max(32768) }),
   z.object({ ...baseRequest, action: z.literal('pick-folder') }).strict(),
   z.object({ ...baseRequest, action: z.literal('recents') }),
+  z.object({ ...baseRequest, action: z.literal('preferences') }).strict(),
+  z.object({ ...baseRequest, action: z.literal('set-language'), language: languageSchema }).strict(),
   z.object({ ...baseRequest, action: z.literal('heartbeat') }),
   z.object({ ...baseRequest, action: z.literal('shutdown') }),
   z.object({ ...baseRequest, action: z.literal('ticket'), sessionId: z.string() }),
@@ -29,7 +33,7 @@ export type ApiRequest = z.infer<typeof requestSchema>;
 export function queryKey(request: ApiRequest, worktreeId: string): string {
   return JSON.stringify([worktreeId, request.action, 'entryId' in request ? request.entryId : null, 'oid' in request ? request.oid : null, 'scope' in request ? request.scope : null, 'ref' in request ? request.ref ?? null : null, 'cursor' in request ? request.cursor : null, request.action === 'history' ? resolveHistoryOrder(request) : null]);
 }
-export const resultDataSchema = z.union([overviewSchema, sessionSchema, diffSchema, historySchema, navigationSchema, commitDetailSchema, folderChoiceSchema, z.array(recentSchema), z.object({ ticket: z.string() }), z.object({ alive: z.boolean() })]);
+export const resultDataSchema = z.union([overviewSchema, sessionSchema, diffSchema, historySchema, navigationSchema, commitDetailSchema, folderChoiceSchema, preferencesSchema, z.array(recentSchema), z.object({ ticket: z.string() }), z.object({ alive: z.boolean() })]);
 export const responseSchema = z.discriminatedUnion('ok', [
   z.object({ schemaVersion: z.literal(1), ok: z.literal(true), data: resultDataSchema, stamp: stampSchema.optional() }),
   z.object({ schemaVersion: z.literal(1), ok: z.literal(false), error: appErrorSchema, stamp: stampSchema.optional(), requestId: z.string(), finishedAt: z.string() }),

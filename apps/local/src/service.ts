@@ -2,7 +2,7 @@ import { isAbsolute } from 'node:path';
 import { QueryError, toAppError, type ApiRequest, type ApiResponse, type RepositorySession, type OperationRequest } from '@git-view/contracts';
 import { createGitAdapter } from '@git-view/git-cli';
 import { createOperations } from '../../../packages/operations/src/index';
-import { RecentStore, ensurePrivateDirectory } from './storage';
+import { PreferencesStore, RecentStore, ensurePrivateDirectory } from './storage';
 import { RepositoryWatchers } from './watch';
 
 export interface RepositoryQueries {
@@ -19,6 +19,7 @@ export const success = (data: unknown) => ({ schemaVersion: 1 as const, ok: true
 export async function createLocalService(queries: RepositoryQueries, directory: string) {
   await ensurePrivateDirectory(directory);
   const recents = new RecentStore(directory); await recents.load();
+  const preferences = new PreferencesStore(directory);
   const watchers = new RepositoryWatchers();
   const operations = await createOperations({ directory, read: createGitAdapter() });
   return {
@@ -39,6 +40,8 @@ export async function createLocalService(queries: RepositoryQueries, directory: 
       finally { resume?.(); }
     },
     async request(request: ApiRequest, signal?: AbortSignal) {
+      if (request.action === 'preferences') return success(await preferences.read());
+      if (request.action === 'set-language') return success(await preferences.setLanguage(request.language));
       if (request.action === 'recents') return success(recents.list());
       if (request.action === 'heartbeat') return success({ alive: true });
       if (request.action === 'open') {

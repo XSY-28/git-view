@@ -1,3 +1,4 @@
+import { useI18n } from '../../i18n/index';
 import { useEffect, useMemo, useState } from 'react';
 import { readFeedbackPolicy, remainingSlowReadDelay, type ReadState } from './read-feedback-policy';
 import './read-feedback.css';
@@ -14,6 +15,7 @@ export function ReadFeedback({ state, hasValue, scope, onRetry, onCancel, idleLa
   className?: string;
   compact?: boolean;
 }) {
+  const { t, locale } = useI18n();
   // A fresh identity resets the delay even when one loading request replaces another.
   const activity = useMemo(() => state.activity ?? { id: 'initial', startedAt: Date.now() }, [state.loading, state.activity?.id, state.activity?.startedAt]);
   const [elapsedActivity, setElapsedActivity] = useState<typeof activity>();
@@ -31,7 +33,7 @@ export function ReadFeedback({ state, hasValue, scope, onRetry, onCancel, idleLa
 
   return <div className={`read-feedback ${compact ? 'read-feedback--compact' : 'read-feedback--block'} ${className}`} data-scope={scope} data-phase={feedback.phase} data-slow={feedback.slow} data-expandable={expandable}>
     <span className="read-feedback-indicator" aria-hidden="true" data-visible={feedback.phase !== 'idle' || Boolean(idleLabel)} />
-    <span className="read-feedback-text"><span className="read-feedback-message" role={feedback.role} aria-live={feedback.role === 'alert' ? 'assertive' : 'polite'} aria-atomic="true" aria-label={feedback.accessibleMessage || undefined} title={feedback.accessibleMessage || undefined} tabIndex={expandable ? 0 : undefined}>{feedback.message}</span></span>
-    <span className="read-feedback-actions">{feedback.action && action && <button type="button" onClick={action} aria-label={actionName}>{actionLabel}</button>}</span>
+    <span className="read-feedback-text"><span className="read-feedback-message" role={feedback.role} aria-live={feedback.role === 'alert' ? 'assertive' : 'polite'} aria-atomic="true" aria-label={t(feedback.accessibleMessage) || undefined} title={t(feedback.accessibleMessage) || undefined} tabIndex={expandable ? 0 : undefined}>{t(feedback.message)}</span></span>
+    <span className="read-feedback-actions">{feedback.action && action && <button type="button" onClick={action} aria-label={t(actionName)}>{t(actionLabel)}</button>}</span>
   </div>;
 }

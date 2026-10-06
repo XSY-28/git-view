@@ -1,3 +1,4 @@
+import { useI18n } from '../../i18n/index';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { layoutHistory } from '@git-view/graph-layout';
 import type { CommitNode } from '@git-view/contracts';
@@ -9,6 +10,7 @@ const LANE_COLORS = ['var(--graph-1)', 'var(--graph-2)', 'var(--graph-3)', 'var(
 export interface LocateRequest { version: number; targetOid: string }
 
 export function HistoryGraph({ commits, selected, headOid, onSelect, locateRequest, onLocateConsumed, initialTop = 0, onScroll, fullWidth = false }: { fullWidth?: boolean; commits: CommitNode[]; selected?: string; headOid?: string; onSelect: (commit: CommitNode, activate?: boolean) => void; locateRequest?: LocateRequest; onLocateConsumed: (version: number) => void; initialTop?: number; onScroll?: (top: number) => void }) {
+  const { t, locale } = useI18n();
   const layout = useMemo(() => layoutHistory(commits), [commits]);
   const scroll = useRef<HTMLDivElement>(null);
   const pan = useRef<HTMLDivElement>(null);
@@ -66,11 +68,11 @@ export function HistoryGraph({ commits, selected, headOid, onSelect, locateReque
     requestAnimationFrame(() => scroll.current?.querySelector<HTMLButtonElement>(`[data-row="${target}"]`)?.focus({ preventScroll: true }));
   }
   return <div className="history-chart">
-    <div ref={scroll} className="history-scroll" tabIndex={-1} onScroll={event => { setTop(event.currentTarget.scrollTop); onScroll?.(event.currentTarget.scrollTop); }} aria-label="提交历史，方向键切换提交">
+    <div ref={scroll} className="history-scroll" tabIndex={-1} onScroll={event => { setTop(event.currentTarget.scrollTop); onScroll?.(event.currentTarget.scrollTop); }} aria-label={t("提交历史，方向键切换提交")}>
     <div className="history-virtual" style={{ height: commits.length * ROW + (layout.continuations.length ? 36 : 0) }}>
       {commits.slice(start, end).map((commit, offset) => {
         const index = start + offset; const row = layout.rows[index]!;
-        return <button key={commit.oid} data-row={index} className={`commit-row ${selected === commit.oid ? 'selected' : ''}`} style={{ top: index * ROW, height: ROW }} onClick={() => onSelect(commit)} onKeyDown={event => keyboard(event, index)} aria-pressed={selected === commit.oid} title={`${commit.subject}\n${commit.author} · ${new Date(commit.authoredAt).toLocaleString('zh-CN')}\n${commit.oid}${commit.refs.length ? `\n${commit.refs.join(', ')}` : ''}`}>
+        return <button key={commit.oid} data-row={index} className={`commit-row ${selected === commit.oid ? 'selected' : ''}`} style={{ top: index * ROW, height: ROW }} onClick={() => onSelect(commit)} onKeyDown={event => keyboard(event, index)} aria-pressed={selected === commit.oid} title={`${commit.subject}\n${commit.author} · ${new Date(commit.authoredAt).toLocaleString(locale)}\n${commit.oid}${commit.refs.length ? `\n${commit.refs.join(', ')}` : ''}`}>
           <span className="history-graph-viewport" style={{ width: graphColumnWidth }} onWheel={event => {
             const delta = event.shiftKey && !event.deltaX ? event.deltaY : event.deltaX;
             if (delta) panTo(left + delta);
@@ -85,13 +87,13 @@ export function HistoryGraph({ commits, selected, headOid, onSelect, locateReque
             {row.boundary ? <rect x={11 + row.lane * LANE} y={ROW / 2 - 4} width="8" height="8" fill="var(--paper)" stroke={LANE_COLORS[row.lane % LANE_COLORS.length]} strokeWidth="2" /> : <circle cx={15 + row.lane * LANE} cy={ROW / 2} r="4.5" fill={selected === commit.oid ? LANE_COLORS[row.lane % LANE_COLORS.length] : 'var(--paper)'} stroke={LANE_COLORS[row.lane % LANE_COLORS.length]} strokeWidth="2" />}
           </svg>
           </span>
-          <span className="commit-copy"><span className="commit-subject">{headOid === commit.oid && <span className="ref-label head-label">HEAD</span>}{commit.subject || '（无提交说明）'}</span><span className="commit-meta"><span className="commit-author">{commit.author}</span>{commit.boundary && <span className="boundary-label">浅克隆边界</span>}{commit.refs.length > 0 && <span className="commit-refs">{commit.refs.map(ref => <span className="ref-label" key={ref} title={ref}>{ref}</span>)}</span>}</span></span>
+          <span className="commit-copy"><span className="commit-subject">{headOid === commit.oid && <span className="ref-label head-label">HEAD</span>}{commit.subject || t('（无提交说明）')}</span><span className="commit-meta"><span className="commit-author">{commit.author}</span>{commit.boundary && <span className="boundary-label">{t("浅克隆边界")}</span>}{commit.refs.length > 0 && <span className="commit-refs">{commit.refs.map(ref => <span className="ref-label" key={ref} title={ref}>{ref}</span>)}</span>}</span></span>
         </button>;
       })}
-      {layout.continuations.length > 0 && <div className="graph-continuation" style={{ top: commits.length * ROW }}><span aria-hidden="true">┆</span> 父提交尚未加载 · 继续加载可展开关系</div>}
+      {layout.continuations.length > 0 && <div className="graph-continuation" style={{ top: commits.length * ROW }}><span aria-hidden="true">┆</span> {t(" 父提交尚未加载 · 继续加载可展开关系")}</div>}
     </div>
     </div>
-    {maxPan > 0 && <div ref={pan} className="history-graph-pan" tabIndex={0} role="region" aria-label="横向滚动提交关系图" title="横向滚动仅移动左侧关系图" onScroll={event => setLeft(event.currentTarget.scrollLeft)}>
+    {maxPan > 0 && <div ref={pan} className="history-graph-pan" tabIndex={0} role="region" aria-label={t("横向滚动提交关系图")} title={t("横向滚动仅移动左侧关系图")} onScroll={event => setLeft(event.currentTarget.scrollLeft)}>
       <div style={{ width: `calc(100% + ${maxPan}px)`, height: 1 }} />
     </div>}
   </div>;

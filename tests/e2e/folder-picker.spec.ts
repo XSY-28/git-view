@@ -1,4 +1,5 @@
-import { test, expect, type Page } from '@playwright/test';
+import { type Page } from '@playwright/test';
+import { test, expect } from './fixtures';
 import { readFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { queryKey, requestSchema, type ApiRequest, type RepositorySession } from '../../packages/contracts/src/index';
@@ -27,6 +28,7 @@ async function mockApp(page: Page, choose: () => Promise<unknown>, open: (reques
     if (url.pathname === '/api') {
       const request = requestSchema.parse(route.request().postDataJSON());
       actions.push(request);
+      if (request.action === 'preferences') { await route.fulfill({ json: success({ schemaVersion: 1, language: 'zh-CN' }) }); return; }
       if (request.action === 'pick-folder') { await route.fulfill({ json: await choose() }).catch(() => undefined); return; }
       if (request.action === 'open') { await route.fulfill({ json: await open(request) }).catch(() => undefined); return; }
       if (request.action === 'recents') { await route.fulfill({ json: success([initial, selected].map(session => ({ path: session.repository.worktreeRoot, worktreeId: session.repository.worktreeId, openedAt: '2026-10-06T00:00:00Z' }))) }); return; }

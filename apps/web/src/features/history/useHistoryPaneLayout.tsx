@@ -1,3 +1,4 @@
+import { useI18n } from '../../i18n/index';
 import { useCallback, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent, type PointerEvent } from 'react';
 import './history-pane.css';
 
@@ -26,6 +27,7 @@ function release(drag: Drag) {
 
 /** Keep the chosen width independent of temporary window constraints. */
 export function useHistoryPaneLayout() {
+  const { t, locale } = useI18n();
   const [workspace, setWorkspace] = useState<HTMLElement | null>(null);
   // The callback observes a main element that can mount after bootstrap; current
   // also lets the caller return focus to its selected row after closing details.
@@ -113,14 +115,14 @@ export function useHistoryPaneLayout() {
     ref={separatorRef}
     className="history-pane-resizer"
     role="separator"
-    aria-label="调整历史与详情宽度"
+    aria-label={t("调整历史与详情宽度")}
     aria-orientation="vertical"
     aria-valuemin={Math.round(limit.available - limit.max)}
     aria-valuemax={Math.round(limit.available - limit.min)}
     aria-valuenow={Math.round(historyWidth)}
-    aria-valuetext={`历史区域宽度 ${Math.round(historyWidth)} 像素`}
+    aria-valuetext={t(`历史区域宽度 ${Math.round(historyWidth)} 像素`)}
     tabIndex={0}
-    title="拖动调整宽度；左右方向键微调，Shift 加速，Home / End 移到边界"
+    title={t("拖动调整宽度；左右方向键微调，Shift 加速，Home / End 移到边界")}
     data-dragging={previewWidth !== undefined ? 'true' : undefined}
     onPointerDown={start}
     onPointerMove={move}

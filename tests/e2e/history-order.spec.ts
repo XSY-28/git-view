@@ -1,4 +1,5 @@
-import { test, expect, type Page, type Response } from '@playwright/test';
+import { type Page, type Response } from '@playwright/test';
+import { test, expect } from './fixtures';
 import { execFileSync } from 'node:child_process';
 import { mkdtemp, mkdir, readFile, rm } from 'node:fs/promises';
 import { devNull, tmpdir } from 'node:os';

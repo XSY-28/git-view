@@ -50,7 +50,7 @@ test('history defaults to HEAD; locating it outside all refs and virtual paginat
   await page.locator('.commit-row.selected').click();
   await expect(page.locator('.commit-detail')).toContainText('相对空树');
   await expect(page.getByRole('button', { name: /定位 HEAD/ })).toBeVisible();
-  await expect(page.locator('.head-line strong')).toHaveText('main');
+  await expect(page.getByRole('button', { name: '分支操作', exact: true })).toHaveText('main');
   await page.getByRole('button', { name: '全部引用', exact: true }).click();
   await expect(page.getByRole('button', { name: /提交历史/ }).first()).toContainText('200');
   const first = page.locator('.commit-row[data-row="0"]');

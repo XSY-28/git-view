@@ -41,3 +41,29 @@
   .operation-dialog footer { padding: 12px; flex-wrap: wrap; }
   .operation-dialog footer > span { flex-basis: 100%; }
 }
+.branch-action { font-weight: 600; color: var(--accent); text-decoration: underline; text-decoration-style: dotted; text-underline-offset: 4px; }
+.view-tabs .commit-action { margin-left: auto; color: var(--accent); }
+.repository-action-dialog { width: min(480px, calc(100vw - 28px)); padding: 20px; color: var(--ink); background: var(--paper); border: 1px solid var(--line); border-radius: 6px; }
+.repository-action-dialog::backdrop { background: #26211766; }
+.repository-action-dialog header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.repository-action-dialog h2 { font-size: 17px; margin: 0; }
+.repository-action-dialog header button { font-size: 22px; }
+.repository-action-dialog p { font-size: 12px; color: var(--muted); }
+.repository-action-dialog label { display: grid; gap: 8px; font-size: 13px; margin: 16px 0; }
+.repository-action-dialog input, .repository-action-dialog textarea, .repository-action-dialog select { width: 100%; min-width: 0; padding: 8px; background: var(--paper); color: var(--ink); border: 1px solid var(--line); border-radius: 4px; font: inherit; }
+.repository-action-dialog textarea { resize: vertical; }
+.repository-action-dialog footer { display: flex; justify-content: flex-end; gap: 14px; margin-top: 20px; }
+.branch-mode { display: flex; gap: 8px; margin: 16px 0; }
+.branch-mode button { padding: 6px 10px; border: 1px solid var(--line); border-radius: 4px; }
+.branch-mode button[aria-pressed=true] { color: var(--accent); background: var(--accent-soft); }
+.operation-context { padding: 12px 20px; border-bottom: 1px solid var(--line); font-size: 12px; }
+.operation-context dl { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 6px 14px; margin: 0; }
+.operation-context dd { margin: 0; overflow-wrap: anywhere; }
+.operation-context dt { color: var(--muted); }
+.operation-context pre, .operation-result pre { white-space: pre-wrap; overflow-wrap: anywhere; font: 12px var(--mono); max-height: 180px; overflow: auto; }
+.operation-consent { display: flex; align-items: start; gap: 8px; padding: 12px 20px; font-size: 12px; }
+.operation-consent input { flex: none; accent-color: var(--accent); }
+.operation-result { margin-top: 8px; font-size: 11px; overflow-wrap: anywhere; }
+.operation-result details { margin-top: 5px; }
+.operation-dialog { overflow: auto; }
+.repository-action-dialog .form-error { color: var(--warning); }

@@ -63,6 +63,11 @@ it('the write protocol rejects path overrides, arbitrary commands, empty and exc
   expect(operationRequestSchema.safeParse({ ...base, action: 'execute', previewId: randomUUID(), operationId: randomUUID(), paths: ['anything'] }).success).toBe(false);
   expect(operationRequestSchema.safeParse({ ...base, action: 'exec', command: 'git add .' }).success).toBe(false);
   for (const entryIds of [[], Array.from({ length: 201 }, (_, i) => `${i}`)]) expect(operationRequestSchema.safeParse({ ...base, action: 'preview', kind: 'stage-files', entryIds, fingerprint: 'snapshot' }).success).toBe(false);
+  for (const operation of [{ kind: 'commit', message: 'ordinary commit' }, { kind: 'create-branch', branch: 'topic/new' }, { kind: 'switch-branch', branch: 'main' }]) {
+    const request = { ...base, action: 'preview', fingerprint: 'snapshot', ...operation };
+    expect(operationRequestSchema.safeParse(request).success).toBe(true);
+    for (const override of [{ args: ['--force'] }, { amend: true }, { paths: ['file'] }, { allowHooks: true }]) expect(operationRequestSchema.safeParse({ ...request, ...override }).success).toBe(false);
+  }
 });
 it.skipIf(process.platform === 'win32')('ordinary stdio stays read-only and only the desktop capability enables the separate write envelope', async () => {
   const root = repository(); write(root, 'file', 'new\n');

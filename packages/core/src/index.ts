@@ -30,6 +30,7 @@ export function createRepositoryQueries(adapter: GitAdapter) {
   const sessions = new Map<string, State>();
   const queues = new Map<string, ReadQueue>();
   const writes = new Map<string, number>();
+  const repositoryWrites = new Map<string, number>();
   function clearWorktree(worktreeId: string) {
     for (const state of sessions.values()) {
       if (state.session.repository.worktreeId !== worktreeId) continue;
@@ -46,6 +47,16 @@ export function createRepositoryQueries(adapter: GitAdapter) {
       released = true; clearWorktree(worktreeId);
       const remaining = (writes.get(worktreeId) ?? 1) - 1;
       if (remaining) writes.set(worktreeId, remaining); else writes.delete(worktreeId);
+    };
+  }
+  function suspendRepository(commonGitDir: string) {
+    repositoryWrites.set(commonGitDir, (repositoryWrites.get(commonGitDir) ?? 0) + 1);
+    const clear = () => { for (const state of sessions.values()) if (state.session.repository.commonGitDir === commonGitDir) clearWorktree(state.session.repository.worktreeId); };
+    clear(); let released = false;
+    return () => {
+      if (released) return; released = true; clear();
+      const remaining = (repositoryWrites.get(commonGitDir) ?? 1) - 1;
+      if (remaining) repositoryWrites.set(commonGitDir, remaining); else repositoryWrites.delete(commonGitDir);
     };
   }
   function stateFor(id: string) {
@@ -69,7 +80,7 @@ export function createRepositoryQueries(adapter: GitAdapter) {
       if (request.action === 'open') return { schemaVersion: 1, ok: true, data: await open(request.path, signal) };
       if (!('generation' in request)) throw new QueryError('INVALID_REQUEST', '此请求不属于仓库查询。');
       state = stateFor(request.sessionId);
-      if (writes.has(state.session.repository.worktreeId)) throw new QueryError('REPOSITORY_BUSY', '暂存状态正在更新，请在操作完成后刷新。', true);
+      if (writes.has(state.session.repository.worktreeId) || repositoryWrites.has(state.session.repository.commonGitDir)) throw new QueryError('REPOSITORY_BUSY', '仓库状态正在更新，请在操作完成后刷新。', true);
       const key = queryKey(request, state.session.repository.worktreeId);
       stamp = { sessionId: request.sessionId, generation: request.generation, queryKey: key, requestId: request.requestId, observationId: randomUUID(), startedAt, finishedAt: startedAt };
       if (request.generation < state.session.generation) throw new QueryError('STALE_RESULT', '这次读取已被更新的刷新取代。', true);
@@ -128,5 +139,5 @@ export function createRepositoryQueries(adapter: GitAdapter) {
       if (state && stamp && state.active.get(stamp.queryKey)?.controller === controller) state.active.delete(stamp.queryKey);
     }
   }
-  return { open, execute, suspendWorktree, getSession: (id: string) => ({ ...stateFor(id).session }), close: () => { sessions.forEach(state => state.active.forEach(active => active.controller.abort())); sessions.clear(); queues.clear(); writes.clear(); } };
+  return { open, execute, suspendWorktree, suspendRepository, getSession: (id: string) => ({ ...stateFor(id).session }), close: () => { sessions.forEach(state => state.active.forEach(active => active.controller.abort())); sessions.clear(); queues.clear(); writes.clear(); repositoryWrites.clear(); } };
 }

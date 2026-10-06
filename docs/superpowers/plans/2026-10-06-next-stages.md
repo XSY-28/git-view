@@ -1,6 +1,6 @@
 # Git 可视化工具：后续两个阶段实施计划
 
-> **供施工 agent 使用：** 按任务使用 `subagent-driven-development` 或 `executing-plans` 推进，并使用复选框记录实际结果。本文跟踪计划与实际进展。2026-10-06 用户已要求开始下一阶段施工，本轮交付 2A 本机预览；未勾选项目仍待验证或实施，2B/第三阶段未计为完成。
+> **供施工 agent 使用：** 按任务使用 `subagent-driven-development` 或 `executing-plans` 推进，并使用复选框记录实际结果。本文跟踪计划与实际进展。2026-10-06 用户已要求开始下一阶段施工，已交付 2A 本机预览及后续基础写操作批次；未勾选项目仍待验证或实施，2B 未计为完成，跨平台限制见各批验收。
 
 **Goal：** 在现有只读 MVP 上吸收 oil-git 的查看体验与交付工程，完善当前状态、历史和任务前后比较，再提供可核对结果的基础 Git 操作。
 
@@ -184,14 +184,14 @@
 
 ### 3-01：写用例边界、预览与结果回执
 
-**已落地文件：** `packages/operations/src/index.ts`、`preview.ts`、`queue.ts`、`receipts.ts`，`packages/git-write/src/index.ts`、`runner.ts`、`platform.ts`；`apps/web/src/features/operations/OperationControls.tsx`、`useOperations.ts`；独立 operations 契约与集成测试。第一批只开放 stage-files / unstage-files；提交和分支能力仍后置。
+**已落地文件：** `packages/operations/src/index.ts`、`preview.ts`、`queue.ts`、`receipts.ts`，`packages/git-write/src/index.ts`、`runner.ts`、`platform.ts`；`apps/web/src/features/operations/OperationControls.tsx`、`useOperations.ts`；独立 operations 契约与集成测试。第二、三批加入 `repository.ts`、`repository-state.ts`、`repository-runner.ts` 和统一 `RepositoryActions.tsx`，五类操作共用协议、预览与回执。
 
-- [ ] 采用具体操作集合：stage-files、unstage-files、commit、create-branch、switch-branch。接口不接受任意 Git 命令、shell 字符串或任意选项。
+- [x] 采用具体操作集合：stage-files、unstage-files、commit、create-branch、switch-branch。接口不接受任意 Git 命令、shell 字符串或任意选项。
 - [x] 预览产生一次性 previewId，绑定 worktree、操作、明确路径、HEAD/index/相关文件及引用前置指纹、影响说明和过期时间；初始有效期 60 秒。执行只接受 previewId 与 operationId，不接受客户端重新提交的路径或参数覆盖预览。
-- [x] 同一 worktree 串行写；当前进程按 commonGitDir 排队，跨应用实例按 worktree 加锁。预览不长期占锁，执行前再次读取核验；任一前提改变就返回过期并重新预览。未来共享引用写入另补跨进程协调。
-- [x] 外部 Git 不受应用锁控制：依赖 Git 本身 index.lock，并在执行后核实真实结果，不承诺跨外部编辑器的原子事务。写期间暂停同工作区会话读取，完成后整体失效旧观测。
+- [x] 同一 worktree 串行写；当前进程按 commonGitDir 排队，共享应用数据目录内的跨实例按 commonGitDir 和 worktree 加锁。预览不长期占锁，执行前再次读取核验；任一前提改变就返回过期并重新预览。使用不同应用数据目录的独立实例仍依赖 Git 自身锁与执行后核实。
+- [x] 外部 Git 不受应用锁控制：依赖 Git 本身 index.lock，并在执行后核实真实结果，不承诺跨外部编辑器的原子事务。写期间暂停同 commonGitDir 的所有 worktree 会话读取，完成后整体失效旧观测。
 - [x] 在仓库外持久化 operationId 与执行状态。重试同一个 ID 返回已知回执；超时、断线或重启状态不明时先重读核对，不能直接重复执行。无法唯一判定则显示“结果待核实”，保留用户处理入口。
-- [ ] 写执行器单独声明 hooks、签名和内容过滤器策略。首批拒绝会触发外部 clean/smudge/process 转换的写入，覆盖当前及目标版本属性；不能将只读 LFS 支持推断为安全写支持。commit 的正常 hooks/签名及 switch 的 post-checkout hook 仅在用户明确了解并信任本地仓库后执行，预览说明可能的影响；不静默禁用 Git 原有检查。
+- [x] 写执行器单独声明 hooks、签名和内容过滤器策略。首批拒绝会触发外部 clean/smudge/process 转换的写入，覆盖当前及目标版本属性；不能将只读 LFS 支持推断为安全写支持。commit 的正常 hooks/签名及 switch 的 post-checkout hook 仅在用户明确了解并信任本地仓库后执行，预览说明可能的影响；不静默禁用 Git 原有检查。
 
 **验收：** 预览后外部改文件、暂存、移动分支都被拒绝；两次点击只执行一次；两个 worktree 对共享 ref 的操作不会在本进程竞态；hook 改 index、提交成功但响应丢失、子进程超时均有可核对回执，不自动重试或强制回滚。
 
@@ -207,35 +207,35 @@
 
 ### 3-03：普通提交
 
-**文件：** `packages/operations/src/commit.ts`、`packages/git-write/src/commit.ts`、`apps/web/src/features/operations/CommitForm.tsx`；新增 `tests/integration/commit.test.ts`。
+**已落地文件：** 复用 operations 协调器；`packages/git-write/src/repository.ts`、`repository-state.ts`、`repository-runner.ts`，`apps/web/src/features/operations/RepositoryActions.tsx`；`tests/integration/commit-branches.test.ts` 与 `operations-crash.test.ts`。
 
-- [ ] 以预览中用户已确认的暂存内容启动普通提交，要求非空说明；不自动 stage，不提供 `-a`、amend、空提交或推送。启用 hooks 时明确告知它们可能改变实际结果，不能承诺提交 tree 必然等于预览 tree。
-- [ ] 提交前显示候选文件、分支/HEAD 与限制，重验 index/HEAD；冲突或合并/rebase 等中间状态首版拒绝普通提交，指向外部处理。
-- [ ] 提交后读取实际新 OID、父提交、tree 与剩余工作区变化。hooks 改变内容时显示实际结果与预览差异，不能仍宣称严格提交了原预览；hook/签名失败保留诊断，不代改 Git 用户配置或自动重试。
+- [x] 以预览中用户已确认的暂存内容启动普通提交，要求非空说明；不自动 stage，不提供 `-a`、amend、空提交或推送。启用 hooks 时明确告知它们可能改变实际结果，不能承诺提交 tree 必然等于预览 tree。
+- [x] 提交前显示候选文件、分支/HEAD 与限制，重验 index/HEAD；冲突或合并/rebase 等中间状态首版拒绝普通提交，指向外部处理。
+- [x] 提交后读取实际新 OID、父提交、tree 与剩余工作区变化。hooks 改变内容时显示实际结果与预览差异，不能仍宣称严格提交了原预览；hook/签名失败保留诊断，不代改 Git 用户配置或自动重试。
 
 **验收：** 首次提交和普通提交的 parent/tree 正确；V3 未暂存部分保留；无暂存变化被说明；用户身份缺失、hook 失败、签名失败、响应丢失均不会变成假成功或重复提交。
 
 ### 3-04：创建和切换分支
 
-**文件：** `packages/operations/src/branches.ts`、`packages/git-write/src/branches.ts`、`apps/web/src/features/operations/BranchActions.tsx`；新增 `tests/integration/branch-write.test.ts`。
+**已落地文件：** 与普通提交共享执行器、前提检查和表单；分支输入仍为独立判别类型，命令集合固定，见 `tests/integration/commit-branches.test.ts`。
 
-- [ ] 创建分支与切换分支分成独立操作，默认从固定 OID 创建，不顺便切换。名称按 Git 规则验证；已存在引用不覆盖。
-- [ ] 首批切换仅允许到已存在的本地分支；已有未提交内容、冲突、进行中的操作、目标被另一 worktree 使用时拒绝，解释原因，不自动 stash、不强制丢弃。
-- [ ] 执行前检查目标 tree 的属性及有效外部 smudge/process 配置，不能仅检查当前工作区属性；无法证明安全时拒绝。post-checkout 失败仍需读取真实 HEAD 和文件状态，允许回执为“分支已切换，后续 hook 失败”，不能按退出码直接判定没有切换。
-- [ ] 预览区分“筛选此分支历史”和“切换实际工作区”；执行后核对 HEAD/工作树，丢弃旧选择与缓存，展示变化前后的事实。
+- [x] 创建分支与切换分支分成独立操作，默认从固定 OID 创建，不顺便切换。名称按 Git 规则验证；已存在引用不覆盖。
+- [x] 首批切换仅允许到已存在的本地分支；已有未提交内容、冲突、进行中的操作、目标被另一 worktree 使用时拒绝，解释原因，不自动 stash、不强制丢弃。
+- [x] 执行前检查目标 tree 的属性及有效外部 smudge/process 配置，不能仅检查当前工作区属性；无法证明安全时拒绝。post-checkout 失败仍需读取真实 HEAD 和文件状态，允许回执为“分支已切换，后续 hook 失败”，不能按退出码直接判定没有切换。
+- [x] 预览区分“筛选此分支历史”和“切换实际工作区”；执行后核对 HEAD/工作树，丢弃旧选择与缓存，展示变化前后的事实。
 
 **验收：** 分支筛选始终只读；创建成功但未切换的语义明确；目标分支在预览后移动、名称非法、占用 worktree、脏工作区均正确处理；仅目标版本激活的 smudge/process 探针不执行；post-checkout 返回失败但已切换时如实报告且不重试；不删除/重置既有分支。
 
 ### 3-05：整体验收与操作反馈
 
-**文件：** 新增 `tests/e2e/operations.spec.ts`、`docs/verification/v0.3.md`；更新 README、安装/宿主权限说明与操作反馈。
+**已落地文件：** `tests/e2e/operations.spec.ts`、`commit-branches.spec.ts`；[暂存验收](../../verification/2026-10-06-stage-files.md) 与 [提交、分支验收](../../verification/2026-10-06-commit-branches.md)，README 与宿主权限说明。
 
-- [ ] 完成“部分暂存 → 预览 → 暂存选定文件 → 普通提交 → 新提交及剩余修改可见”和“干净工作区 → 创建分支 → 独立切换”的真实临时仓库流程。
-- [ ] 分开回归纯查看前后仓库指纹不变，以及每个写操作仅发生预期改变；不能因加入写能力放弃只读测试。
-- [ ] 故障恢复明确区分已成功、已失败、未开始和结果未知；每种操作说明实际恢复方式，不提供通用“一键撤销一切”的承诺。
-- [ ] 走查选定文件、操作预览、执行与结果回执的实际工作流；核对取消暂存保留工作文件、引用筛选不切换分支，记录阻碍操作的问题。
+- [x] 完成“部分暂存 → 预览 → 暂存选定文件 → 普通提交 → 新提交及剩余修改可见”和“干净工作区 → 创建分支 → 独立切换”的真实临时仓库流程。
+- [x] 分开回归纯查看前后仓库指纹不变，以及每个写操作仅发生预期改变；不能因加入写能力放弃只读测试。
+- [x] 故障恢复明确区分已成功、已失败、未开始和结果未知；每种操作说明实际恢复方式，不提供通用“一键撤销一切”的承诺。
+- [x] 走查选定文件、操作预览、执行与结果回执的实际工作流；核对取消暂存保留工作文件、引用筛选不切换分支，记录阻碍操作的问题。
 
-**V0.3 完成：** 五类操作逐项通过真实 Git、并发/故障、原生 GUI 与只读回归；前后说明对应实际结果；没有隐式全量暂存、强制切分支、历史重写、自动推送或结果不明时盲重试。
+**V0.3 完成：** 本机五类操作逐项通过真实 Git、并发/故障、原生 GUI 与只读回归；前后说明对应实际结果；没有隐式全量暂存、强制切分支、历史重写、自动推送或结果不明时盲重试。
 
 ## 7. 验证入口与执行顺序
 
@@ -267,4 +267,4 @@ node scripts/benchmark.mjs
 - 写操作边界依据：[Git 内容过滤器](https://git-scm.com/docs/gitattributes)、[Git hooks](https://git-scm.com/docs/githooks)。过滤器和 hooks 的作用必须按具体操作检查，不能沿用只读命令的假设。
 - 本地已验证基线：66 项单元/集成测试、7 项浏览器测试与真实 macOS 目录选择；详见前述验收记录。这些数字不包含本文尚未实现的功能。
 
-2026-10-06 施工进展：2A 导航、文本比较、自动刷新及 macOS 桌面本机链路已实现并验证，详见 [2A 证据](../../verification/v0.2-a.md)。2A-01 的跨平台/完整性能对照与 2A-04 的远程 CI、Codex 自动发现仍未全部验收，所以保留相关复合复选框。第三阶段第一批已实现按文件暂存/取消暂存与独立写入基础，见 [第一批验收](../../verification/2026-10-06-stage-files.md)；2B、普通提交、分支写入及 V0.3 整体验收仍未完成。
+2026-10-06 施工进展：2A 导航、文本比较、自动刷新及 macOS 桌面本机链路已实现并验证，详见 [2A 证据](../../verification/v0.2-a.md)。2A-01 的跨平台/完整性能对照与 2A-04 的远程 CI、Codex 自动发现仍未全部验收，所以保留相关复合复选框。第三阶段第一批已实现按文件暂存/取消暂存与独立写入基础，见 [第一批验收](../../verification/2026-10-06-stage-files.md)；第二、三批补齐普通提交与本地分支操作，见 [提交与分支验收](../../verification/2026-10-06-commit-branches.md)。2B 仍未完成，跨平台实际运行不由本机验收推断。

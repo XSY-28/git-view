@@ -48,6 +48,18 @@ describe('repository observation coordinator', () => {
     expect(result.ok && 'fingerprint' in result.data && result.data.fingerprint).toBe('after-write');
     queries.close();
   });
+  it('shared-reference writes block linked worktrees, including sessions opened during the write', async () => {
+    const adapter = fake(async repository => ({ ...raw, repository }));
+    adapter.resolveRepository = async root => ({ ...repository, worktreeId: root, worktreeRoot: root, gitDir: `${root}/.git` });
+    const queries = createRepositoryQueries(adapter);
+    const a = await queries.open('/a');
+    const resume = queries.suspendRepository(a.repository.commonGitDir);
+    const b = await queries.open('/b');
+    const request = { schemaVersion: 1 as const, action: 'overview' as const, sessionId: b.sessionId, generation: 0, requestId: 'linked' };
+    const blocked = await queries.execute(request);
+    expect(!blocked.ok && blocked.error.code).toBe('REPOSITORY_BUSY');
+    resume(); expect((await queries.execute(request)).ok).toBe(true); queries.close();
+  });
   it.each(['success', 'failure'])('old navigation %s cannot replace a newer generation', async result => {
     const old = deferred<Navigation>();
     const adapter = fake(async () => raw);

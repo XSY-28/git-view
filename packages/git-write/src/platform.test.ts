@@ -10,7 +10,7 @@ import { requireIndexWrites, supportsIndexWrites } from './platform';
 
 it('refuses Windows writes until its persistence and index replacement are supported', () => {
   expect(supportsIndexWrites('win32')).toBe(false);
-  expect(() => requireIndexWrites('win32')).toThrow('Windows 暂未开放暂存写入');
+  expect(() => requireIndexWrites('win32')).toThrow('Windows 暂未开放 Git 写入');
   expect(() => requireIndexWrites('darwin')).not.toThrow();
 });
 

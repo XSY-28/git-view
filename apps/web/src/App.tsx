@@ -8,6 +8,7 @@ import { ReadCancellation, type ReadSlot } from './state/read-coordination';
 import { FEEDBACK_TIMING, ReadFeedback, type ReadState } from './features/feedback/ReadFeedback';
 import { DiffView } from './features/changes/DiffView';
 import { ChangeList } from './features/changes/ChangeList';
+import { RepositoryActions } from './features/operations/RepositoryActions';
 import { useOperations } from './features/operations/useOperations';
 import { OperationDialog, OperationFeedback, OperationSelection } from './features/operations/OperationControls';
 import { matchesFileFilter } from './features/changes/change-filter';
@@ -69,6 +70,7 @@ export function App({ initialSessionId, ticket }: { initialSessionId?: string; t
   const [repositoryActivity, setRepositoryActivity] = useState<'picking' | 'opening' | null>(null);
   const [openError, setOpenError] = useState('');
   const [watchError, setWatchError] = useState('');
+  const [watchEpoch, setWatchEpoch] = useState(0);
   const operations = useOperations({
     overview: overview.value,
     available: Boolean(session && overview.value && !overview.loading && !overview.stale && !overview.error && !overview.cancelled && overview.value.complete && !overview.value.changes.conflicts.length && !overview.value.operation.length && !repositoryActivity),
@@ -77,7 +79,19 @@ export function App({ initialSessionId, ticket }: { initialSessionId?: string; t
       const stop = <T,>(setter: ResourceSetter<T>) => setter(previous => ({ ...previous, loading: false, stale: Boolean(previous.value) }));
       stop(setOverview); stop(setNavigation); stop(setHistory); stop(setCommit); stop(setDiff); stop(setCommitDiff);
     },
-    afterExecute: () => { refreshQueue.current.reset(); refresh('recovery'); },
+    afterExecute: receipt => {
+      // The mandatory post-write read already observes this operation. Restart
+      // polling so its queued notification cannot cancel the next preview.
+      setWatchEpoch(value => value + 1);
+      if (receipt?.kind === 'switch-branch') {
+        selection.current = null; commitSelection.current = undefined; commitFileSelection.current = undefined;
+        controller.current.clearSelection('changes'); controller.current.clearSelection('history');
+        setSelected(undefined); setSelectedCommit(undefined); setSelectedCommitFile(undefined);
+        setDiff(empty()); setCommit(empty()); setCommitDiff(empty()); setHistory(empty()); currentHistory.current = undefined;
+        historyScope.current = 'head'; historyRef.current = undefined; historyOrder.current = 'topo'; setHistoryDetailsOpen(false); setView('changes'); setMobilePanel('list');
+      }
+      refreshQueue.current.reset(); refresh('recovery');
+    },
   });
   const operationBusy = operations.state.phase === 'executing' || operations.state.phase === 'checking';
 
@@ -348,7 +362,7 @@ export function App({ initialSessionId, ticket }: { initialSessionId?: string; t
     setWatchError('');
     if (!session) return;
     return subscribeRepositoryInvalidation(session.sessionId, () => { if (currentSession.current?.sessionId === session.sessionId) refresh('change'); }, error => { if (currentSession.current?.sessionId === session.sessionId) setWatchError(`${errorMessage(error)} 自动更新已停止，可手动刷新或重新打开仓库。`); });
-  }, [session?.sessionId]);
+  }, [session?.sessionId, watchEpoch]);
   useEffect(() => {
     if (session) controller.current.save({ view, scope: historyScope.current, ref: historyRef.current, allHistoryOrder: allHistoryOrder.current, selection: selection.current, commit: commitSelection.current, commitFile: commitFileSelection.current });
   }, [session, view, selected, selectedCommit, selectedCommitFile, history.value, commit.value, fileFilters, historyScope.current, historyRef.current, allHistoryOrder.current]);
@@ -423,7 +437,7 @@ export function App({ initialSessionId, ticket }: { initialSessionId?: string; t
         onOpenChange={open => { setShowRepository(open); if (open) void loadRecents(); }} onOpen={path => void openRepository(path)}
         onCopyPath={() => { if (session) copyText(session.repository.worktreeRoot, '仓库路径'); }} busy={opening} disabled={operationBusy || startup.loading || Boolean(startup.error)}
         repoPath={repoPath} onRepoPathChange={setRepoPath} error={openError}/>
-      {session && <div className="head-line" aria-label="仓库当前位置"><span className="head-caption">{data?.head.kind === 'detached' ? '当前位置' : '当前分支'}</span><strong title={branch}>{branch || '读取分支中'}</strong><code title={headOid}>{head || '—'}</code></div>}
+      {session && <div className="head-line" aria-label="仓库当前位置"><span className="head-caption">{data?.head.kind === 'detached' ? '当前位置' : '当前分支'}</span><RepositoryActions mode="branch" label={branch || '读取分支中'} operations={operations} overview={data} navigation={navigation.value}/><code title={headOid}>{head || '—'}</code></div>}
       <div className="toolbar-status"><span className="readonly">本地 Git</span>
         {session && <div className="read-status"><ReadFeedback state={overview} hasValue={Boolean(data)} scope="仓库状态" compact className="overview-read-state" idleLabel={data ? `读取于 ${timeLabel(data.stamp.finishedAt)}` : undefined} onRetry={() => retry('overview')} onCancel={() => cancel('overview')}/><button className="refresh-button" onClick={() => refresh()} disabled={opening || operationBusy} aria-label="刷新仓库"><span aria-hidden="true">↻</span> 刷新</button></div>}
       </div>
@@ -439,7 +453,7 @@ export function App({ initialSessionId, ticket }: { initialSessionId?: string; t
         <OperationFeedback operations={operations}/>
         {watchError && <div className="operation-banner" role="alert">{watchError}</div>}
         {info && <div className="feedback-toast" role="status"><span>{info.message}</span></div>}
-        <nav className="view-tabs" aria-label="主视图"><button className={view === 'changes' ? 'active' : ''} onClick={() => { setView('changes'); setMobilePanel('list'); }}>当前改动 <span>{total}</span></button><button className={view === 'history' ? 'active' : ''} onClick={() => { setView('history'); setMobilePanel('list'); if (!history.value && !history.loading) retry('history'); }}>提交历史 <span>{history.value?.commits.length || '·'}</span></button>{view === 'history' && <button className="locate-button" disabled={!headOid || history.loading} title={headInHistory ? '选中并定位当前 HEAD' : '查看从当前 HEAD 出发的历史'} onClick={locateHead}>{headInHistory ? '定位 HEAD' : '查看 HEAD 历史'}</button>}{view === 'history' && selectedCommit && !historyDetailsOpen && <button className="history-open-details" onClick={() => { setHistoryDetailsOpen(true); setMobilePanel('diff'); }}>查看提交详情</button>}</nav>
+        <nav className="view-tabs" aria-label="主视图"><button className={view === 'changes' ? 'active' : ''} onClick={() => { setView('changes'); setMobilePanel('list'); }}>当前改动 <span>{total}</span></button><button className={view === 'history' ? 'active' : ''} onClick={() => { setView('history'); setMobilePanel('list'); if (!history.value && !history.loading) retry('history'); }}>提交历史 <span>{history.value?.commits.length || '·'}</span></button>{view === 'changes' && <RepositoryActions mode="commit" operations={operations} overview={data}/>}{view === 'history' && <button className="locate-button" disabled={!headOid || history.loading} title={headInHistory ? '选中并定位当前 HEAD' : '查看从当前 HEAD 出发的历史'} onClick={locateHead}>{headInHistory ? '定位 HEAD' : '查看 HEAD 历史'}</button>}{view === 'history' && selectedCommit && !historyDetailsOpen && <button className="history-open-details" onClick={() => { setHistoryDetailsOpen(true); setMobilePanel('diff'); }}>查看提交详情</button>}</nav>
         <nav className="mobile-tabs" aria-label="窄窗口面板"><button className={mobilePanel === 'navigation' ? 'active' : ''} onClick={() => setMobilePanel('navigation')}>历史范围</button><button className={mobilePanel === 'list' ? 'active' : ''} onClick={() => setMobilePanel('list')}>{view === 'changes' ? '文件列表' : '提交列表'}</button><button className={mobilePanel === 'diff' ? 'active' : ''} disabled={view === 'history' && !selectedCommit} onClick={() => { setMobilePanel('diff'); if (view === 'history') setHistoryDetailsOpen(true); }}>查看详情</button></nav>
 
         <main ref={historyPane.workspaceRef} style={view === 'history' ? historyPane.workspaceStyle : undefined} data-details={historyDetailsOpen ? 'open' : 'closed'} className={`workspace ${view === 'history' ? 'history-workspace' : ''} mobile-${mobilePanel}`}>

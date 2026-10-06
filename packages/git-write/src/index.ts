@@ -41,7 +41,7 @@ export interface PreparedIndexOperation {
 export const indexWriteEvidenceSchema = z.object({ schemaVersion: z.literal(1), repository: repositorySchema.strict(), expectedIndexHash: z.string().regex(/^[a-f0-9]{64}$/), guard: z.string().regex(/^[a-f0-9]{64}$/), paths: z.array(z.string().min(1)).min(1).max(2000) }).strict();
 export type IndexWriteEvidence = z.infer<typeof indexWriteEvidenceSchema>;
 
-async function optional(file: string, limit = MAX_INDEX_BYTES): Promise<Buffer | null> {
+export async function optional(file: string, limit = MAX_INDEX_BYTES): Promise<Buffer | null> {
   try {
     const info = await lstat(file);
     if (!info.isFile() || info.isSymbolicLink()) fail('仓库元数据不是普通文件，暂不支持写入。');
@@ -56,7 +56,7 @@ async function optional(file: string, limit = MAX_INDEX_BYTES): Promise<Buffer |
     } finally { await handle.close(); }
   } catch (error) { if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null; throw error; }
 }
-function validPath(value: string): string {
+export function validPath(value: string): string {
   if (!value || value.includes('\0') || path.isAbsolute(value) || value.split('/').some((part) => !part || part === '.' || part === '..' || part.toLowerCase() === '.git')) throw new QueryError('UNSUPPORTED_PATH', '路径无法安全寻址，未执行暂存操作。');
   return value;
 }
@@ -123,7 +123,7 @@ function inspectIndex(bytes: Buffer | null, oidBytes: number) {
   }
   if (cursor !== bytes.length - oidBytes) fail('index 扩展内容不完整。');
 }
-function parseEntries(value: Buffer, tree = false): IndexEntry[] {
+export function parseEntries(value: Buffer, tree = false): IndexEntry[] {
   return nul(value).map((record) => {
     const tab = record.indexOf('\t'), header = record.slice(0, tab).split(' '), name = record.slice(tab + 1);
     if (tab < 0 || (tree ? header[1] !== 'blob' : header[2] !== '0')) fail('暂不支持冲突、目录项或 submodule index。');
@@ -148,7 +148,7 @@ async function configGuard(repository: RepositoryIdentity, signal?: AbortSignal)
   const filters = new Set([...values].filter(([key, value]) => /^filter\..*\.(clean|smudge|process)$/.test(key) && value.trim()).map(([key]) => key.slice(7, key.lastIndexOf('.'))));
   return { hash: digest(Buffer.concat([raw, Buffer.from(JSON.stringify(originHashes))])), values, filters };
 }
-async function readState(repository: RepositoryIdentity, paths: string[], kind: PreparedIndexOperation['kind'], signal?: AbortSignal) {
+export async function readWriteState(repository: RepositoryIdentity, paths: string[], kind: PreparedIndexOperation['kind'], signal?: AbortSignal) {
   const resolved = await createGitAdapter().resolveRepository(repository.worktreeRoot, signal);
   if (JSON.stringify(resolved) !== JSON.stringify(repository)) stale();
   const identities: string[] = [];
@@ -171,6 +171,7 @@ async function readState(repository: RepositoryIdentity, paths: string[], kind: 
       const globalAttrs = nul(await runPlumbing(repository, ['check-attr', '-z', ...(cached ? ['--cached'] : []), '--stdin', 'filter'], { signal, input: allFiles }));
       for (let i = 2; i < globalAttrs.length; i += 3) if (config.filters.has(globalAttrs[i]!)) throw new QueryError('UNSUPPORTED_FILTER', '仓库路径使用外部 clean/smudge/process 过滤器；首批暂存操作不执行外部程序。');
     }
+    if (!paths.length) continue;
     const result = await runPlumbing(repository, ['check-attr', '-z', ...(cached ? ['--cached'] : []), '--stdin', 'filter', 'text', 'eol', 'ident', 'working-tree-encoding'], { signal, input: Buffer.from(`${paths.join('\0')}\0`) });
     attrs.push(result.toString('base64'));
     const triples = nul(result);
@@ -197,7 +198,7 @@ export function createGitWriteAdapter() {
       if (!['stage-files', 'unstage-files'].includes(kind) || !entries.length || entries.length > 1000) throw new QueryError('INVALID_REQUEST', '请选择 1 至 1000 个文件。');
       const paths = [...new Set(entries.flatMap(entryPaths))].sort();
       // Reject filters before status can inspect content; prepare remains entirely read-only.
-      const before = await readState(repository, paths, kind, signal);
+      const before = await readWriteState(repository, paths, kind, signal);
       const overview = await reader.readOverview(repository, signal);
       if (overview.fingerprint !== expectedFingerprint) stale();
       if (!overview.complete || overview.operation.length || overview.changes.conflicts.length) fail('不完整概览、冲突或进行中的 Git 操作不支持暂存写入。');
@@ -211,7 +212,7 @@ export function createGitWriteAdapter() {
         if (selectedBytes > MAX_SELECTED_BYTES) throw new QueryError('OUTPUT_LIMIT', '所选文件总大小超过 128 MiB，请分批暂存。');
         files.push(snapshot);
       }
-      const after = await readState(repository, paths, kind, signal);
+      const after = await readWriteState(repository, paths, kind, signal);
       if (before.guard !== after.guard || before.indexHash !== after.indexHash || (await reader.readOverview(repository, signal)).fingerprint !== expectedFingerprint) stale();
       return { schemaVersion: 1, repository, kind, paths, expectedFingerprint, guard: after.guard, indexHash: after.indexHash, files, headOid: after.headOid, indexEntries: after.indexEntries, headEntries: after.headEntries };
     },
@@ -228,7 +229,7 @@ export function createGitWriteAdapter() {
       const assertLock = async () => { const current = await lstat(lockPath); if (!current.isFile() || current.dev !== owned.dev || current.ino !== owned.ino) throw new QueryError('REPOSITORY_BUSY', 'index 锁的所有权已变化，未安装结果。'); };
       const validate = async (includeBytes = false) => {
         await assertLock();
-        const state = await readState(repository, paths, kind);
+        const state = await readWriteState(repository, paths, kind);
         if (state.guard !== prepared.guard || state.indexHash !== prepared.indexHash || !same(state.indexEntries, prepared.indexEntries) || !same(state.headEntries, prepared.headEntries) || state.headOid !== prepared.headOid) stale();
         const files: { snapshot: FileSnapshot; bytes?: Buffer }[] = [];
         let selectedBytes = 0;
@@ -292,7 +293,7 @@ export function createGitWriteAdapter() {
         const parsed = indexWriteEvidenceSchema.parse(evidence);
         if (!same(repository, parsed.repository)) return false;
         try { await lstat(path.join(repository.gitDir, 'index.lock')); return false; } catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') return false; }
-        const state = await readState(repository, parsed.paths, 'unstage-files');
+        const state = await readWriteState(repository, parsed.paths, 'unstage-files');
         return state.evidenceGuard === parsed.guard && state.indexHash === parsed.expectedIndexHash;
       } catch { return false; }
     },

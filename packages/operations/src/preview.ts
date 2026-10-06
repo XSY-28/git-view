@@ -1,24 +1,24 @@
 import { randomUUID } from 'node:crypto';
-import { z } from 'zod';
-import { OPERATION_LIMITS, QueryError, type Diff, type GitAdapter, type OperationPreview, type RepositorySession } from '@git-view/contracts';
+import { OPERATION_LIMITS, operationInputSchema, QueryError, type OperationInput, type Diff, type GitAdapter, type OperationPreview, type RepositorySession } from '@git-view/contracts';
 import type { createGitWriteAdapter, PreparedIndexOperation } from '../../git-write/src/index.js';
+import { createRepositoryWriter, type PreparedRepositoryOperation } from '../../git-write/src/repository.js';
 import { sameRepository } from './receipts.js';
 
-export const previewInputSchema = z.object({
-  kind: z.enum(['stage-files', 'unstage-files']), entryIds: z.array(z.string().min(1).max(512)).min(1).max(OPERATION_LIMITS.selectedFiles), fingerprint: z.string().min(1).max(512),
-}).strict();
-export type PreviewInput = z.infer<typeof previewInputSchema>;
-export type StoredPreview = { preview: OperationPreview; sessionId: string; generation: number; prepared: PreparedIndexOperation };
+export const previewInputSchema = operationInputSchema;
+export type PreviewInput = OperationInput;
+export type StoredPreview = { preview: OperationPreview; sessionId: string; generation: number; prepared: PreparedIndexOperation | PreparedRepositoryOperation };
 
-export async function preparePreview(read: GitAdapter, writer: ReturnType<typeof createGitWriteAdapter>, session: RepositorySession, input: PreviewInput, now: () => number, lifetime: number, signal?: AbortSignal): Promise<StoredPreview> {
+export async function preparePreview(read: GitAdapter, writer: ReturnType<typeof createGitWriteAdapter>, session: RepositorySession, input: PreviewInput, now: () => number, lifetime: number, signal?: AbortSignal, repositoryWriter = createRepositoryWriter()): Promise<StoredPreview> {
   const parsed = previewInputSchema.safeParse(input);
-  if (!parsed.success || new Set(input.entryIds).size !== input.entryIds.length) throw new QueryError('INVALID_REQUEST', '请明确选择 1 至 200 个不重复的文件变化。');
+  if (!parsed.success || ('entryIds' in input && new Set(input.entryIds).size !== input.entryIds.length)) throw new QueryError('INVALID_REQUEST', '操作参数无效，请检查文件选择、提交说明或分支名称。');
   const overview = await read.readOverview(session.repository, signal);
   if (!sameRepository(overview.repository, session.repository) || overview.fingerprint !== input.fingerprint) throw new QueryError('STALE_RESULT', '文件或仓库状态已变化，请刷新后重新预览。', true);
   if (!overview.complete) throw new QueryError('OUTPUT_LIMIT', '当前文件列表不完整，无法安全生成操作预览。');
-  if (overview.changes.conflicts.length || overview.operation.length) throw new QueryError('UNSUPPORTED_REPOSITORY', '首版不在冲突或 merge、rebase 等进行中状态执行暂存操作，请先在外部 Git 中处理。');
+  if (overview.changes.conflicts.length || overview.operation.length) throw new QueryError('UNSUPPORTED_REPOSITORY', '存在冲突或 merge、rebase 等进行中的操作，请先处理后再执行。');
   const available = input.kind === 'stage-files' ? [...overview.changes.unstaged, ...overview.changes.untracked] : overview.changes.staged;
-  const files = input.entryIds.map(id => {
+  const entryIds = 'entryIds' in input ? input.entryIds : input.kind === 'commit' ? overview.changes.staged.map(entry => entry.id) : [];
+  if (entryIds.length > OPERATION_LIMITS.selectedFiles) throw new QueryError('OUTPUT_LIMIT', '一次最多预览 200 个变化文件。');
+  const files = entryIds.map(id => {
     const entry = available.find(candidate => candidate.id === id);
     if (!entry) throw new QueryError('STALE_RESULT', '所选文件已不在对应的暂存分组中，请刷新后重新选择。', true);
     if (!entry.supported) throw new QueryError('UNSUPPORTED_PATH', '所选文件路径不能安全写入，首版只支持有效 UTF-8 路径。');
@@ -42,10 +42,15 @@ export async function preparePreview(read: GitAdapter, writer: ReturnType<typeof
     diffs.push(diff);
   }
   // Preparation verifies the final read state and freezes the intended file content.
-  const prepared = await writer.prepare(session.repository, input.kind, files, input.fingerprint, signal);
+  const prepared = 'entryIds' in input
+    ? await writer.prepare(session.repository, input.kind, files, input.fingerprint, signal)
+    : await repositoryWriter.prepare(session.repository, input, signal);
+  const context = 'input' in prepared ? { headOid: prepared.state.headOid, branch: prepared.state.headRef?.replace(/^refs\/heads\//, '') ?? null,
+    ...(prepared.input.kind === 'commit' ? { message: prepared.input.message } : { targetBranch: prepared.input.branch, targetOid: prepared.targetOid }) } : undefined;
+  if (context) warnings.push('此操作按 Git 配置运行 hooks；提交还可能运行签名程序。它们可修改文件、暂存区或其他引用，请仅在信任本地仓库时允许执行。');
   if (signal?.aborted) throw new QueryError('CANCELLED', '操作预览已取消。', true);
   const created = now();
-  const preview: OperationPreview = { previewId: randomUUID(), worktreeId: session.repository.worktreeId, kind: input.kind, createdAt: new Date(created).toISOString(), expiresAt: new Date(created + lifetime).toISOString(), files, diffs, warnings };
+  const preview: OperationPreview = { previewId: randomUUID(), worktreeId: session.repository.worktreeId, kind: input.kind, createdAt: new Date(created).toISOString(), expiresAt: new Date(created + lifetime).toISOString(), files, diffs, warnings, ...(context ? { context, requiresHookConsent: true } : {}) };
   if (Buffer.byteLength(JSON.stringify(preview)) > 2 * 1024 * 1024) throw new QueryError('OUTPUT_LIMIT', '操作预览及路径信息超过 2 MiB，请减少本次选择的文件数。');
   return { preview, sessionId: session.sessionId, generation: session.generation, prepared };
 }

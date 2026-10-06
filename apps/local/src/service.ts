@@ -10,6 +10,7 @@ export interface RepositoryQueries {
   execute(request: ApiRequest, signal?: AbortSignal): Promise<ApiResponse>;
   getSession(id: string): RepositorySession;
   suspendWorktree?(worktreeId: string): () => void;
+  suspendRepository?(commonGitDir: string): () => void;
   close?(): void;
 }
 export const failure = (error: unknown, requestId = 'transport'): ApiResponse => ({ schemaVersion: 1, ok: false, error: toAppError(error), requestId, finishedAt: new Date().toISOString() });
@@ -26,12 +27,15 @@ export async function createLocalService(queries: RepositoryQueries, directory: 
     watch: (id: string) => success(watchers.state(queries.getSession(id).repository)),
     async operation(request: OperationRequest, signal?: AbortSignal) {
       const session = queries.getSession(request.sessionId);
-      if (request.action === 'preview') return success(await operations.preview(session, { kind: request.kind, entryIds: request.entryIds, fingerprint: request.fingerprint }, signal));
+      if (request.action === 'preview') {
+        const { action: _action, schemaVersion: _version, requestId: _request, sessionId: _session, ...input } = request;
+        return success(await operations.preview(session, input, signal));
+      }
       if (request.action === 'receipt') return success(await operations.receipt(session, request.operationId));
       if (request.action === 'pending') return success(await operations.pending(session));
       // Once submitted, losing a transport must not cancel or repeat a write.
-      const resume = queries.suspendWorktree?.(session.repository.worktreeId);
-      try { return success(await operations.execute(session, request.previewId, request.operationId)); }
+      const resume = queries.suspendRepository?.(session.repository.commonGitDir) ?? queries.suspendWorktree?.(session.repository.worktreeId);
+      try { return success(await operations.execute(session, request.previewId, request.operationId, request.allowHooks)); }
       finally { resume?.(); }
     },
     async request(request: ApiRequest, signal?: AbortSignal) {

@@ -4,6 +4,7 @@ import path from 'node:path';
 import { createHash, randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import { QueryError, repositorySchema, operationReceiptSchema, type RepositoryIdentity } from '@git-view/contracts';
+import { repositoryEvidenceSchema } from '../../git-write/src/repository.js';
 import { indexWriteEvidenceSchema } from '../../git-write/src/index.js';
 
 const MAX_RECORD_BYTES = 2 * 1024 * 1024;
@@ -11,7 +12,7 @@ const lockSchema = z.object({ schemaVersion: z.literal(1), token: z.string().uui
 const pendingMarkerSchema = z.object({ schemaVersion: z.literal(1), operationId: z.string().uuid() }).strict();
 export const storedReceiptSchema = z.object({
   schemaVersion: z.literal(1), repository: repositorySchema.strict(), receipt: operationReceiptSchema.strict(),
-  ownerId: z.string().uuid(), pid: z.number().int().positive(), evidence: indexWriteEvidenceSchema.optional(),
+  ownerId: z.string().uuid(), pid: z.number().int().positive(), evidence: z.union([indexWriteEvidenceSchema, repositoryEvidenceSchema]).optional(),
 }).strict();
 export type StoredReceipt = z.infer<typeof storedReceiptSchema>;
 const hash = (input: string) => createHash('sha256').update(input).digest('hex');
@@ -85,6 +86,7 @@ export async function createReceiptStore(directory: string) {
   const receiptPath = (operationId: string) => path.join(root, `${hash(operationId)}.json`);
   const markerPath = (operationId: string) => path.join(pendingRoot, `${hash(operationId)}.json`);
   const lockPath = (repository: RepositoryIdentity) => path.join(root, `${hash(repository.gitDir)}.lock`);
+  const commonLockPath = (repository: RepositoryIdentity) => path.join(root, `common-${hash(repository.commonGitDir)}.lock`);
   const secureRoot = async () => privateStat(await lstat(root), true);
   const securePending = async () => { await secureRoot(); privateStat(await lstat(pendingRoot), true); };
   async function clearPending(operationId: string) {
@@ -150,9 +152,9 @@ export async function createReceiptStore(directory: string) {
         return true;
       } finally { await unlink(temporary).catch(() => {}); }
     },
-    async lock(repository: RepositoryIdentity, ownerId: string) {
+    async lock(repository: RepositoryIdentity, ownerId: string, common = false) {
       await secureRoot();
-      const file = lockPath(repository);
+      const file = common ? commonLockPath(repository) : lockPath(repository);
       const record = { schemaVersion: 1 as const, token: randomUUID(), ownerId, pid: process.pid };
       let handle;
       try { handle = await open(file, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW, 0o600); }
@@ -171,7 +173,7 @@ export async function createReceiptStore(directory: string) {
     },
     async hasLiveLock(repository: RepositoryIdentity, ownerId: string) {
       await secureRoot();
-      const data = await readJson(lockPath(repository));
+      const data = await readJson(lockPath(repository)) ?? await readJson(commonLockPath(repository));
       if (data === undefined) return false;
       const record = lockSchema.safeParse(data);
       if (!record.success) throw new QueryError('INTERNAL_ERROR', '操作锁内容无效，请先核对仓库与操作回执。');

@@ -93,7 +93,9 @@ posixIt('recovers after actual SIGKILL between index installation and final rece
   expect(git(root, ['show', ':other.txt'])).toBe('unchanged');
   const indexFile = path.join(interrupted.repository.gitDir, 'index');
   const installedIndex = readFileSync(indexFile);
-  expect(interrupted.evidence?.expectedIndexHash).toBe(hash(installedIndex));
+  expect(interrupted.evidence).toBeDefined();
+  if (!interrupted.evidence || 'kind' in interrupted.evidence) throw new Error('Expected index evidence');
+  expect(interrupted.evidence.expectedIndexHash).toBe(hash(installedIndex));
   const appLock = path.join(directory, 'operations', `${hash(interrupted.repository.gitDir)}.lock`);
   const originalLock = readFileSync(appLock, 'utf8');
   expect(JSON.parse(originalLock).pid).toBe(terminated.pid);
@@ -120,4 +122,46 @@ posixIt('recovers after actual SIGKILL between index installation and final rece
   // Recovery confirms the result but deliberately leaves the dead process's
   // application lock for explicit handling; it does not delete foreign locks.
   expect(readFileSync(appLock, 'utf8')).toBe(originalLock);
+});
+
+posixIt('recovers a real committed OID after SIGKILL before the observed result is persisted', async () => {
+  const root = repository();
+  git(root, ['config', 'user.name', 'Crash Test']); git(root, ['config', 'user.email', 'test@example.invalid']); git(root, ['config', 'commit.gpgsign', 'false']);
+  const hooks = path.join(temporaryDirectory(), 'hooks');
+  // Use an existing empty fixture directory as hooksPath to isolate user hooks.
+  git(root, ['config', 'core.hooksPath', path.dirname(hooks)]);
+  write(root, 'file.txt', 'V1\n'); commit(root); write(root, 'file.txt', 'V2\n'); git(root, ['add', '--', 'file.txt']); write(root, 'file.txt', 'V3\n');
+  const beforeHead = git(root, ['rev-parse', 'HEAD']); const directory = temporaryDirectory();
+  const operationId = randomUUID(); const bundle = path.join(temporaryDirectory(), 'commit-crash-child.mjs');
+  const modulePath = (file: string) => JSON.stringify(path.join(projectRoot, file));
+  await build({ stdin: { sourcefile: 'commit-crash-child.ts', loader: 'ts', resolveDir: projectRoot, contents: `
+    import { randomUUID } from 'node:crypto';
+    import { createGitAdapter } from ${modulePath('packages/git-cli/src/index.ts')};
+    import { createRepositoryWriter } from ${modulePath('packages/git-write/src/repository.ts')};
+    import { createOperations } from ${modulePath('packages/operations/src/index.ts')};
+    const [root, directory, operationId] = process.argv.slice(2);
+    const read = createGitAdapter(); const real = createRepositoryWriter();
+    const writer = { ...real, execute: async (prepared, id, persist) => real.execute(prepared, id, async evidence => {
+      if (evidence.outcome) { process.kill(process.pid, 'SIGKILL'); await new Promise(() => {}); }
+      await persist(evidence);
+    }) };
+    const session = { sessionId: randomUUID(), generation: 0, repository: await read.resolveRepository(root) };
+    const operations = await createOperations({ directory, read, repositoryWriter: writer });
+    const overview = await read.readOverview(session.repository);
+    const preview = await operations.preview(session, { kind: 'commit', message: 'crash-safe commit', fingerprint: overview.fingerprint });
+    await operations.execute(session, preview.previewId, operationId, true);
+    throw new Error('Expected SIGKILL');
+  ` }, outfile: bundle, bundle: true, platform: 'node', target: 'node24', format: 'esm', tsconfig: path.join(projectRoot, 'tsconfig.json'), logLevel: 'silent' });
+  const exit = await runUntilExit(bundle, [root, directory, operationId]); expect(exit, exit.stderr).toMatchObject({ code: null, signal: 'SIGKILL' });
+  const file = path.join(directory, 'operations', `${hash(operationId)}.json`);
+  const interrupted = storedReceiptSchema.parse(JSON.parse(readFileSync(file, 'utf8')));
+  expect(interrupted.receipt.status).toBe('running');
+  expect(interrupted.evidence && 'kind' in interrupted.evidence && interrupted.evidence.outcome).toBeUndefined();
+  const oid = git(root, ['rev-parse', 'HEAD']); expect(oid).not.toBe(beforeHead); expect(git(root, ['rev-parse', 'HEAD^'])).toBe(beforeHead);
+  const read = createGitAdapter(); const session = { sessionId: randomUUID(), generation: 0, repository: await read.resolveRepository(root) };
+  const restarted = await createOperations({ directory, read });
+  const recovered = await restarted.pending(session);
+  expect(recovered.receipts).toMatchObject([{ status: 'succeeded', result: { createdOid: oid, previewMatched: true } }]);
+  expect((await restarted.execute(session, interrupted.receipt.previewId, operationId, true)).result?.createdOid).toBe(oid);
+  expect(git(root, ['rev-list', '--count', 'HEAD'])).toBe('2'); expect(readFileSync(path.join(root, 'file.txt'), 'utf8')).toBe('V3\n');
 });

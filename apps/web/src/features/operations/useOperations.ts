@@ -1,9 +1,9 @@
 import { useRef, useState } from 'react';
-import { operationPreviewSchema, operationReceiptSchema, pendingOperationsSchema, type ChangeEntry, type OperationPreview, type OperationReceipt, type Overview, type RepositorySession } from '@git-view/contracts';
+import { operationPreviewSchema, operationReceiptSchema, pendingOperationsSchema, type OperationInput, type OperationKind, type ChangeEntry, type OperationPreview, type OperationReceipt, type Overview, type RepositorySession } from '@git-view/contracts';
 import { operationApi, errorMessage, ApiError } from '../../state/api';
 
-export type OperationKind = 'stage-files' | 'unstage-files';
-export const operationLabel = (kind: OperationKind) => kind === 'stage-files' ? '暂存' : '取消暂存';
+export type { OperationKind } from '@git-view/contracts';
+export const operationLabel = (kind: OperationKind) => ({ 'stage-files': '暂存', 'unstage-files': '取消暂存', commit: '提交', 'create-branch': '创建分支', 'switch-branch': '切换分支' })[kind];
 export type OperationState = {
   kind?: OperationKind; entryIds: string[]; preview?: OperationPreview;
   phase: 'idle' | 'previewing' | 'executing' | 'checking' | 'discovering' | 'discovery-failed';
@@ -16,7 +16,7 @@ const unresolved = (receipt?: OperationReceipt) => receipt?.status === 'unknown'
 
 export function useOperations(options: {
   overview?: Overview; available: boolean;
-  beforeExecute: () => void; afterExecute: () => void;
+  beforeExecute: () => void; afterExecute: (receipt?: OperationReceipt) => void;
 }) {
   const latest = useRef(options); latest.current = options;
   const context = useRef<RepositorySession | undefined>(undefined);
@@ -57,7 +57,7 @@ export function useOperations(options: {
     } catch (error) {
       if (accepts(active, serial)) update({ ...idle(), receipt: pending, error: errorMessage(error) });
     } finally {
-      if (accepts(active, serial)) { executing.current = false; latest.current.afterExecute(); }
+      if (accepts(active, serial)) { executing.current = false; latest.current.afterExecute(stateRef.current.receipt); }
     }
   }
   function activate(session: RepositorySession) {
@@ -101,31 +101,34 @@ export function useOperations(options: {
     const next = backlog.current.shift();
     if (next) { settle(next); void recover(); }
   }
-  function toggle(entry: ChangeEntry, kind: OperationKind) {
+  function toggle(entry: ChangeEntry, kind: 'stage-files' | 'unstage-files') {
     const current = stateRef.current;
     if (!latest.current.available || current.phase !== 'idle' || backlog.current.length || executing.current || unresolved(current.receipt) || !entry.supported || (current.entryIds.length && current.kind !== kind)) return;
     previewAbort.current?.abort(); version.current += 1;
     const entryIds = current.entryIds.includes(entry.id) ? current.entryIds.filter(id => id !== entry.id) : [...current.entryIds, entry.id];
     update({ entryIds, kind: entryIds.length ? kind : undefined, phase: 'idle' });
   }
-  async function preview() {
+  async function preview(input?: OperationInput) {
     const active = context.current; const current = stateRef.current; const overview = latest.current.overview;
-    if (!active || !overview || !latest.current.available || !current.entryIds.length || !current.kind || current.phase !== 'idle' || backlog.current.length || unresolved(current.receipt) || executing.current) return;
+    if (!active || !overview || !latest.current.available || current.phase !== 'idle' || backlog.current.length || unresolved(current.receipt) || executing.current) return false;
+    const request = input ?? (current.entryIds.length && (current.kind === 'stage-files' || current.kind === 'unstage-files') ? { kind: current.kind, entryIds: current.entryIds, fingerprint: overview.fingerprint } : undefined);
+    if (!request) return false;
     const serial = ++version.current; const abort = new AbortController(); previewAbort.current = abort;
-    update({ ...current, phase: 'previewing', error: undefined });
+    update({ ...current, kind: request.kind, phase: 'previewing', error: undefined });
     try {
-      const result = await operationApi({ schemaVersion: 1, requestId: crypto.randomUUID(), sessionId: active.sessionId, action: 'preview', kind: current.kind, entryIds: current.entryIds, fingerprint: overview.fingerprint }, operationPreviewSchema, abort.signal);
-      if (!accepts(active, serial)) return;
-      if (result.worktreeId !== active.repository.worktreeId || result.kind !== current.kind || result.files.length !== current.entryIds.length || result.files.some(file => !current.entryIds.includes(file.id))) throw new Error('预览与所选文件不匹配，请刷新后重新选择。');
-      update({ ...current, phase: 'idle', preview: result });
-    } catch (error) { if (accepts(active, serial)) update({ ...current, phase: 'idle', error: errorMessage(error) }); }
+      const result = await operationApi({ schemaVersion: 1, requestId: crypto.randomUUID(), sessionId: active.sessionId, action: 'preview', ...request }, operationPreviewSchema, abort.signal);
+      if (!accepts(active, serial)) return false;
+      if (result.worktreeId !== active.repository.worktreeId || result.kind !== request.kind || ('entryIds' in request && (result.files.length !== request.entryIds.length || result.files.some(file => !request.entryIds.includes(file.id))))) throw new Error('预览与所选操作不匹配，请刷新后重新选择。');
+      update({ entryIds: 'entryIds' in request ? request.entryIds : [], kind: request.kind, phase: 'idle', preview: result });
+      return true;
+    } catch (error) { if (accepts(active, serial)) update({ ...current, phase: 'idle', error: errorMessage(error) }); return false; }
   }
   function dismissPreview() {
     if (executing.current || stateRef.current.phase === 'discovering' || stateRef.current.phase === 'discovery-failed') return;
     previewAbort.current?.abort(); version.current += 1;
     update({ ...stateRef.current, phase: 'idle', preview: undefined, error: undefined });
   }
-  async function execute() {
+  async function execute(allowHooks = false) {
     const active = context.current; const current = stateRef.current; const preview = current.preview;
     if (!active || !preview || executing.current || current.phase !== 'idle' || backlog.current.length || unresolved(current.receipt) || !latest.current.available) return;
     const pending: OperationReceipt = { operationId: crypto.randomUUID(), previewId: preview.previewId, worktreeId: active.repository.worktreeId, kind: preview.kind, status: 'unknown', message: '尚未取得执行回执，请核实结果。', paths: preview.files.map(file => file.path), startedAt: new Date().toISOString() };
@@ -134,7 +137,7 @@ export function useOperations(options: {
     const serial = ++version.current; executing.current = true;
     update({ ...current, phase: 'executing', receipt: pending, error: undefined }); latest.current.beforeExecute();
     try {
-      const receipt = await operationApi({ schemaVersion: 1, requestId: crypto.randomUUID(), sessionId: active.sessionId, action: 'execute', previewId: preview.previewId, operationId: pending.operationId }, operationReceiptSchema);
+      const receipt = await operationApi({ schemaVersion: 1, requestId: crypto.randomUUID(), sessionId: active.sessionId, action: 'execute', previewId: preview.previewId, operationId: pending.operationId, allowHooks }, operationReceiptSchema);
       if (!accepts(active, serial)) return;
       if (receipt.worktreeId !== active.repository.worktreeId || receipt.operationId !== pending.operationId || receipt.previewId !== preview.previewId) throw new Error('操作回执与当前仓库或操作不匹配。');
       settle(receipt);
@@ -145,7 +148,7 @@ export function useOperations(options: {
         } else update({ ...idle(), receipt: pending, error: `未能确认操作结果：${errorMessage(error)}` });
       }
     } finally {
-      if (accepts(active, serial)) { executing.current = false; latest.current.afterExecute(); }
+      if (accepts(active, serial)) { executing.current = false; latest.current.afterExecute(stateRef.current.receipt); }
     }
   }
   function forgetReceipt() {

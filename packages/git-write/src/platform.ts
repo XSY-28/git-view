@@ -6,7 +6,7 @@ export function supportsIndexWrites(platform: NodeJS.Platform = process.platform
   return platform !== 'win32';
 }
 export function indexWritesUnavailable() {
-  return new QueryError('UNSUPPORTED_REPOSITORY', 'Windows 暂未开放暂存写入；仓库查看仍可使用。');
+  return new QueryError('UNSUPPORTED_REPOSITORY', 'Windows 暂未开放 Git 写入；仓库查看仍可使用。');
 }
 export function requireIndexWrites(platform: NodeJS.Platform = process.platform): void {
   if (!supportsIndexWrites(platform)) throw indexWritesUnavailable();

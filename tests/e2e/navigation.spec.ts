@@ -36,7 +36,7 @@ test('reference filters are read-only; changes selection and linked worktree con
   await expect(page.locator('.navigation-ref').filter({ hasText: /^side/ })).toHaveAttribute('aria-pressed', 'true');
   await expect(page.locator('.navigation-ref').filter({ hasText: /^(?:● )?main/ })).toContainText('当前分支');
   await expect(page.locator('.navigation-ref').filter({ hasText: /^side/ })).not.toContainText('当前分支');
-  await expect(page.locator('.head-line strong')).toHaveText('main');
+  await expect(page.getByRole('button', { name: '分支操作', exact: true })).toHaveText('main');
   await expect(page.locator('.commit-row').filter({ hasText: 'side history 210' })).toBeVisible();
   await expect(page.getByRole('button', { name: /提交历史/ }).first()).toContainText('200');
   await page.getByRole('button', { name: /继续加载 200 条/ }).click(); await expect(page.getByRole('button', { name: /提交历史/ }).first()).toContainText('212');

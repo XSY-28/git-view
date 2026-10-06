@@ -8,7 +8,7 @@
 
 ![Git View 暖色界面与提交历史](docs/verification/screenshots/warm-theme-history.png)
 
-当前为桌面预览版。macOS Apple silicon 的安装副本与原生界面已有实机验收；GitHub CI 检查 macOS ARM、macOS Intel 与 Windows。Windows 目前提供查看功能，写入尚未开放；其他平台的桌面安装和原生交互仍需实机验证。具体证据见 [2A 验收记录](docs/verification/v0.2-a.md)、[暂存验收](docs/verification/2026-10-06-stage-files.md)、[提交与分支验收](docs/verification/2026-10-06-commit-branches.md) 和 [语言切换验收](docs/verification/2026-10-06-language.md)。
+当前为桌面预览版。macOS Apple silicon 的安装副本与原生界面已有实机验收；GitHub CI 检查 macOS ARM 与 Windows，暂时不检查或构建 Intel Mac 版本。Windows 目前提供查看功能，写入尚未开放；其他平台的桌面安装和原生交互仍需实机验证。具体证据见 [2A 验收记录](docs/verification/v0.2-a.md)、[暂存验收](docs/verification/2026-10-06-stage-files.md)、[提交与分支验收](docs/verification/2026-10-06-commit-branches.md) 和 [语言切换验收](docs/verification/2026-10-06-language.md)。
 
 从源码开始：
 

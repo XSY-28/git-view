@@ -57,6 +57,7 @@ impl Sidecar {
         let mut command = Command::new(node);
         command
             .arg(entry)
+            .env("GIT_VIEW_DESKTOP_WRITES", "1")
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::null());
@@ -163,7 +164,7 @@ impl Sidecar {
             .get("operation")
             .and_then(Value::as_str)
             .ok_or("Missing operation")?;
-        if !["request", "session", "cancel", "watch"].contains(&operation) {
+        if !["request", "session", "cancel", "watch", "write"].contains(&operation) {
             return Err("Unknown operation".into());
         }
         let mut bytes = serde_json::to_vec(&message).map_err(|_| "Invalid JSON request")?;

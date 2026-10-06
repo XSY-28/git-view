@@ -108,41 +108,88 @@ test('late sort responses and late pagination cannot replace the current orderin
   await expect(order).toHaveValue('date');
   await expect(page.locator('.commit-row[data-row="1"]')).toContainText('MAIN merge feature');
   const sort = deferred(); const pagination = deferred();
-  let holdTopo = true; let holdDatePage = false; let sortHeld = 0; let sortDelivered = 0; let pageHeld = 0; let pageDelivered = 0;
+  type HeldRequest = { requestId: string; generation: number; ready: ReturnType<typeof deferred>; finished: ReturnType<typeof deferred> };
+  const sortRequests: HeldRequest[] = []; const pageRequests: HeldRequest[] = [];
+  const routeErrors: unknown[] = [];
+  let holdTopo = true; let holdDatePage = false;
   await page.route(`${origin}/api`, async route => {
     const request = route.request().postDataJSON();
     const delayedSort = request.action === 'history' && request.scope === 'all' && request.order === 'topo' && !request.cursor && holdTopo;
     const delayedPage = request.action === 'history' && request.scope === 'all' && request.order === 'date' && Boolean(request.cursor) && holdDatePage;
     if (!delayedSort && !delayedPage) { await route.continue(); return; }
-    // Delay authentic server responses: commits, cursors, and read stamps remain real.
-    const response = await route.fetch();
-    if (delayedSort) { sortHeld++; await sort.promise; }
-    else { pageHeld++; await pagination.promise; }
-    await route.fulfill({ response }).catch(() => undefined);
-    if (delayedSort) sortDelivered++; else pageDelivered++;
+    // Register before fetching: refresh can start another request while this real
+    // server response is still in flight. Every captured request must be drained.
+    const held: HeldRequest = { requestId: request.requestId, generation: request.generation, ready: deferred(), finished: deferred() };
+    (delayedSort ? sortRequests : pageRequests).push(held);
+    try {
+      const response = await route.fetch();
+      held.ready.resolve();
+      await (delayedSort ? sort.promise : pagination.promise);
+      // The app is allowed to abort obsolete reads. Releasing their authentic
+      // successes/errors must still leave the current ordering untouched.
+      await route.fulfill({ response }).catch(() => undefined);
+    } catch (error) { routeErrors.push(error); }
+    finally { held.ready.resolve(); held.finished.resolve(); }
   });
+  async function releaseAll(barrier: ReturnType<typeof deferred>, requests: HeldRequest[]) {
+    const captured = [...requests];
+    expect(captured.length).toBeGreaterThanOrEqual(2);
+    expect(new Set(captured.map(request => request.requestId)).size).toBe(captured.length);
+    expect(new Set(captured.map(request => request.generation)).size).toBeGreaterThan(1);
+    await Promise.all(captured.map(request => request.ready.promise));
+    barrier.resolve();
+    await Promise.all(captured.map(request => request.finished.promise));
+    expect(routeErrors).toEqual([]);
+    // Let the browser process released responses and commit their React effects.
+    await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
+  }
   try {
-    await order.selectOption('topo'); await expect.poll(() => sortHeld).toBe(1);
+    await order.selectOption('topo'); await expect.poll(() => sortRequests.length).toBeGreaterThanOrEqual(1);
+    await sortRequests[0]!.ready.promise;
+    // A refresh legitimately issues another request for the same ordering, with
+    // a new generation. Exercise this case deliberately instead of counting one.
+    const originalSortCount = sortRequests.length;
+    await page.getByRole('button', { name: '刷新仓库', exact: true }).click();
+    await expect.poll(() => sortRequests.length).toBeGreaterThan(originalSortCount);
+    await Promise.all(sortRequests.map(request => request.ready.promise));
     await order.selectOption('date');
     await expect(page.locator('.commit-row[data-row="1"]')).toContainText('MAIN merge feature');
     await expect(page.locator('.history-read-state')).toHaveAttribute('data-phase', 'idle');
-    sort.resolve(); await expect.poll(() => sortDelivered).toBe(1);
+    const dateRows = await page.locator('.commit-row').allTextContents();
+    holdTopo = false;
+    await releaseAll(sort, sortRequests);
     await expect(order).toHaveValue('date');
+    await expect(page.locator('.commit-row')).toHaveText(dateRows);
     await expect(page.locator('.commit-row[data-row="1"]')).toContainText('MAIN merge feature');
+    await expect(page.locator('.history-read-state')).toHaveAttribute('data-phase', 'idle');
 
-    holdTopo = false; holdDatePage = true;
+    holdDatePage = true;
     await page.getByRole('button', { name: /继续加载 200 条/ }).click();
-    await expect.poll(() => pageHeld).toBe(1);
+    await expect.poll(() => pageRequests.length).toBeGreaterThanOrEqual(1);
+    await pageRequests[0]!.ready.promise;
+    // Refresh cancels the old page and restores the current 200-row window.
+    // Request that page again, then change order with both responses held.
+    await page.getByRole('button', { name: '刷新仓库', exact: true }).click();
+    await expect(page.locator('.history-read-state')).toHaveAttribute('data-phase', 'idle');
+    const originalPageCount = pageRequests.length;
+    await page.getByRole('button', { name: /继续加载 200 条/ }).click();
+    await expect.poll(() => pageRequests.length).toBeGreaterThan(originalPageCount);
+    await Promise.all(pageRequests.map(request => request.ready.promise));
     await order.selectOption('topo');
     await expect(page.locator('.history-read-state')).toHaveAttribute('data-phase', 'idle');
     await expect.poll(() => graphLanes(page)).toEqual(['15']);
-    pagination.resolve(); await expect.poll(() => pageDelivered).toBe(1);
+    const topoRows = await page.locator('.commit-row').allTextContents();
+    holdDatePage = false;
+    await releaseAll(pagination, pageRequests);
     await expect(order).toHaveValue('topo');
+    await expect(page.locator('.commit-row')).toHaveText(topoRows);
     await expect(page.getByRole('button', { name: /提交历史/ }).first()).toContainText('200');
     await expect(page.locator('.commit-row').filter({ hasText: 'MAIN merge feature' })).toHaveCount(0);
+    await expect(page.locator('.history-read-state')).toHaveAttribute('data-phase', 'idle');
     await expect.poll(() => graphLanes(page)).toEqual(['15']);
     expect(await snapshot()).toEqual(before);
   } finally { sort.resolve(); pagination.resolve(); }
+
 });
 
 test('all-ref ordering survives view and scope changes and belongs to each worktree', async ({ page }) => {

@@ -1,10 +1,16 @@
 import { transport } from './transport';
 import { watchStateSchema, REFRESH_TIMING } from '../../../shared/transport';
-import { responseSchema, type ApiRequest, type AppError, type ReadStamp, type RepositorySession, sessionSchema } from '@git-view/contracts';
+import { responseSchema, operationResponseSchema, type OperationRequest, type ApiRequest, type AppError, type ReadStamp, type RepositorySession, sessionSchema } from '@git-view/contracts';
 import { z } from 'zod';
 
 export class ApiError extends Error {
   constructor(public detail: AppError, public stamp?: ReadStamp) { super(detail.message); this.name = 'ApiError'; }
+}
+export async function operationApi<T>(request: OperationRequest, schema: z.ZodType<T>, signal?: AbortSignal): Promise<T> {
+  const result = operationResponseSchema.safeParse(await transport.operation(request, signal));
+  if (!result.success) throw new Error('操作响应不兼容；若已执行，请先核实结果。');
+  if (!result.data.ok) throw new ApiError(result.data.error);
+  return schema.parse(result.data.data);
 }
 export function errorMessage(error: unknown): string {
   if (error instanceof ApiError) return `${error.message}（${error.detail.code}）`;

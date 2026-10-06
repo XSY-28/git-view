@@ -1,11 +1,12 @@
 import { z } from 'zod';
-import { QueryError, requestSchema } from '@git-view/contracts';
+import { QueryError, requestSchema, operationRequestSchema } from '@git-view/contracts';
 import { createLocalService, failure, success, type RepositoryQueries } from './service';
 import type { Readable, Writable } from 'node:stream';
 
 const id = z.string().min(1).max(200);
 const envelopeSchema = z.discriminatedUnion('operation', [
   z.object({ id, operation: z.literal('request'), request: requestSchema }).strict(),
+  z.object({ id, operation: z.literal('write'), request: operationRequestSchema }).strict(),
   z.object({ id, operation: z.literal('session'), sessionId: id }).strict(),
   z.object({ id, operation: z.literal('watch'), sessionId: id }).strict(),
   z.object({ id, operation: z.literal('cancel'), targetId: id }).strict(),
@@ -13,7 +14,7 @@ const envelopeSchema = z.discriminatedUnion('operation', [
 const MAX_LINE_BYTES = 1024 * 1024;
 const MAX_IN_FLIGHT = 64;
 /** One authenticated parent process owns this channel. Never listen on a network port. */
-export async function runStdio(queries: RepositoryQueries, directory: string, input: Readable, output: Writable) {
+export async function runStdio(queries: RepositoryQueries, directory: string, input: Readable, output: Writable, options: { allowWrites?: boolean } = {}) {
   const service = await createLocalService(queries, directory);
   const pending = new Map<string, AbortController>();
   let buffer = Buffer.alloc(0); let closed = false;
@@ -26,12 +27,14 @@ export async function runStdio(queries: RepositoryQueries, directory: string, in
       const parsed = envelopeSchema.safeParse(raw);
       if (!parsed.success) throw new QueryError('INVALID_REQUEST', '桌面请求格式无效。');
       envelope = parsed.data;
+      if (envelope.operation === 'write' && !options.allowWrites) throw new QueryError('UNAUTHORIZED', '此查询通道没有写入权限。');
       if (envelope.operation === 'cancel') { pending.get(envelope.targetId)?.abort(); send(envelope.id, success({ alive: true })); return; }
       if (pending.has(envelope.id) || pending.size >= MAX_IN_FLIGHT) throw new QueryError('INVALID_REQUEST', '桌面请求重复或并发请求过多。');
       const controller = new AbortController(); pending.set(envelope.id, controller);
       try {
         const response = envelope.operation === 'session' ? service.session(envelope.sessionId)
           : envelope.operation === 'watch' ? service.watch(envelope.sessionId)
+          : envelope.operation === 'write' ? await service.operation(envelope.request, controller.signal)
           : await service.request(envelope.request, controller.signal);
         send(envelope.id, response);
       } finally { pending.delete(envelope.id); }

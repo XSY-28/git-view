@@ -30,6 +30,24 @@ describe('deterministic evidence rules', () => {
 });
 
 describe('repository observation coordinator', () => {
+  it('writes invalidate all sessions of a worktree, reject late reads, and resume only after every writer releases', async () => {
+    const old = deferred<RawOverview>(); let reads = 0;
+    const queries = createRepositoryQueries(fake(async () => ++reads === 1 ? old.promise : { ...raw, fingerprint: 'after-write' }));
+    const a = await queries.open('/a'); const b = await queries.open('/b');
+    const request = { schemaVersion: 1 as const, action: 'overview' as const, sessionId: a.sessionId, generation: 1, requestId: 'before' };
+    const pending = queries.execute(request);
+    const resumeA = queries.suspendWorktree(a.repository.worktreeId);
+    const resumeB = queries.suspendWorktree(b.repository.worktreeId);
+    old.resolve(raw);
+    expect((await pending).ok).toBe(false);
+    resumeA(); resumeA();
+    const blocked = await queries.execute({ ...request, sessionId: b.sessionId, requestId: 'during' });
+    expect(!blocked.ok && blocked.error.code).toBe('REPOSITORY_BUSY');
+    resumeB();
+    const result = await queries.execute({ ...request, requestId: 'after', generation: 2 });
+    expect(result.ok && 'fingerprint' in result.data && result.data.fingerprint).toBe('after-write');
+    queries.close();
+  });
   it.each(['success', 'failure'])('old navigation %s cannot replace a newer generation', async result => {
     const old = deferred<Navigation>();
     const adapter = fake(async () => raw);

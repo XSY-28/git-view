@@ -1,4 +1,3 @@
-import { devNull } from 'node:os';
 import { execFileSync } from 'node:child_process';
 import { mkdtempSync, mkdirSync, writeFileSync, readdirSync, lstatSync, readFileSync, readlinkSync, rmSync } from 'node:fs';
 import os from 'node:os';
@@ -7,6 +6,17 @@ import { createHash } from 'node:crypto';
 
 // All fixture mutations are confined to directories created here, never the user's checkout.
 const fixtureRoots = new Set<string>();
+let isolation: { config: string; hooks: string } | undefined;
+function fixtureConfiguration() {
+  if (!isolation) {
+    const directory = temporaryDirectory();
+    const config = path.join(directory, 'empty.config');
+    const hooks = path.join(directory, 'empty-hooks');
+    writeFileSync(config, ''); mkdirSync(hooks);
+    isolation = { config, hooks };
+  }
+  return isolation;
+}
 export function temporaryDirectory(): string {
   const root = mkdtempSync(path.join(os.tmpdir(), 'git-view-fixture-'));
   fixtureRoots.add(root);
@@ -19,9 +29,10 @@ export function fixtureGit(root: string, args: string[], input?: string | Buffer
   assertFixture(root);
   const env: NodeJS.ProcessEnv = {};
   for (const [key, value] of Object.entries(process.env)) if (!key.startsWith('GIT_')) env[key] = value;
-  return execFileSync('git', ['-c', 'core.hooksPath=/dev/null', '-c', 'commit.gpgsign=false', ...args], {
+  const isolated = fixtureConfiguration();
+  return execFileSync('git', ['-c', `core.hooksPath=${isolated.hooks}`, '-c', 'commit.gpgsign=false', ...args], {
     cwd: root, input, encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'],
-    env: { ...env, GIT_CONFIG_NOSYSTEM: '1', GIT_CONFIG_GLOBAL: devNull, GIT_AUTHOR_NAME: 'Fixture', GIT_AUTHOR_EMAIL: 'fixture@example.invalid', GIT_COMMITTER_NAME: 'Fixture', GIT_COMMITTER_EMAIL: 'fixture@example.invalid' },
+    env: { ...env, GIT_CONFIG_NOSYSTEM: '1', GIT_CONFIG_GLOBAL: isolated.config, GIT_AUTHOR_NAME: 'Fixture', GIT_AUTHOR_EMAIL: 'fixture@example.invalid', GIT_COMMITTER_NAME: 'Fixture', GIT_COMMITTER_EMAIL: 'fixture@example.invalid' },
   }).trim();
 }
 export function repository(): string {
@@ -57,4 +68,5 @@ export function fingerprint(root: string): string {
 export function cleanupFixtures() {
   for (const root of fixtureRoots) rmSync(root, { recursive: true, force: true });
   fixtureRoots.clear();
+  isolation = undefined;
 }

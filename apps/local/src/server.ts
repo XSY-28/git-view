@@ -3,7 +3,7 @@ import { randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
 import { readFile, realpath } from 'node:fs/promises';
 import { extname, isAbsolute, join, resolve, sep } from 'node:path';
 import { z } from 'zod';
-import { QueryError, folderChoiceSchema, requestSchema, type FolderChoice, type RepositorySession } from '@git-view/contracts';
+import { QueryError, folderChoiceSchema, requestSchema, operationRequestSchema, type FolderChoice, type RepositorySession } from '@git-view/contracts';
 import { removeOwnInstance, writePrivateJson, type InstanceRecord } from './storage';
 
 import { createLocalService, failure, success, type RepositoryQueries } from './service';
@@ -107,6 +107,17 @@ export async function startLocalServer(options: LocalServerOptions) {
         }
         if (!sessionId) throw new QueryError('INVALID_REQUEST', '缺少会话标识。');
         allowSession(sessionId); respond(response, 200, url.pathname === '/api/watch' ? service.watch(sessionId) : service.session(sessionId)); return;
+      }
+      if (url.pathname === '/api/operations' && request.method === 'POST') {
+        requireAuthentication();
+        // A read-only CLI token is not a write capability. Only the authorized
+        // same-origin page may request an explicitly previewed index operation.
+        if (isCli || suppliedOrigin !== origin || !browserSessions) throw forbidden();
+        const body = await jsonBody(request); version(body);
+        const parsed = operationRequestSchema.safeParse(body);
+        if (!parsed.success) throw new QueryError('INVALID_REQUEST', '操作请求字段无效或缺失。');
+        requestId = parsed.data.requestId; allowSession(parsed.data.sessionId);
+        respond(response, 200, await service.operation(parsed.data, controller.signal)); return;
       }
       if (url.pathname === '/api' && request.method === 'POST') {
         requireAuthentication();

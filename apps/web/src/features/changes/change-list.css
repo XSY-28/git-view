@@ -49,3 +49,11 @@
   color: var(--muted);
   font-size: 12px;
 }
+
+.file-operation-row { display: flex; align-items: stretch; min-width: 0; }
+.file-operation-checkbox { display: flex; flex: 0 0 30px; align-items: center; justify-content: center; cursor: pointer; }
+.file-operation-checkbox input { width: 14px; height: 14px; margin: 0; accent-color: var(--accent); }
+.file-operation-row .file-row { min-width: 0; padding-left: 0; }
+.file-operation-row .file-row.selected:before { left: -30px; }
+.file-operation-row:has(.file-row.selected) { background: var(--accent-soft); }
+.file-operation-checkbox:has(input:disabled) { cursor: default; }

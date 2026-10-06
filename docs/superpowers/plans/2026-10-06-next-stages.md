@@ -59,7 +59,7 @@
 
 ## 4. 架构与文件落点
 
-以下新路径是施工落点，尚未创建实现。每个新增用例在 contracts 定义 schema，再由核心组织语义，传输层负责校验与授权。
+以下路径记录架构落点；其中桌面、传输与暂存写入已落地，其余按对应任务施工。每个新增用例在 contracts 定义 schema，再由核心组织语义，传输层负责校验与授权。
 
 | 职责 | 现有入口 | 计划新增或拆分 |
 | --- | --- | --- |
@@ -69,7 +69,7 @@
 | 页面状态及展示 | `apps/web/src/App.tsx`、`state/api.ts` | `state/repository-controller.ts`、`state/transport.ts`，按 navigation、comparison、baseline、operations 新增功能目录 |
 | 桌面宿主 | 当前 `apps/local/`、`apps/cli/` | `apps/desktop/`、`apps/local/src/stdio.ts`、`apps/cli/src/transport.ts`；窗口与进程生命周期不进入 core |
 | 基线保存与比较 | 尚无 | `packages/baseline/src/`；存储目录权限与清理逻辑独立于最近仓库列表 |
-| 写用例与执行 | 尚无 | `packages/operations/src/`、`packages/git-write/src/`；不向现有只读 runner 添加任意写命令出口 |
+| 写用例与执行 | `packages/operations/src/`、`packages/git-write/src/`（暂存已实现） | 后续按操作扩展；不向现有只读 runner 添加任意写命令出口 |
 | 安装及持续验证 | `scripts/build.mjs`、`scripts/verify-lifecycle.mjs` | `scripts/verify-installed.mjs`、`.github/workflows/check.yml`、`.github/workflows/package.yml` |
 
 传输抽离只为已有浏览器与新增桌面两个真实调用方服务：浏览器继续使用现有鉴权 HTTP；桌面使用壳转发的窄 IPC/stdio，不把 HTTP 令牌交给渲染层。JSON 请求与结果遵守共享 schema，请求取消有对应 requestId。业务逻辑不因 IPC/HTTP 分叉。
@@ -180,28 +180,28 @@
 
 ## 6. 第三阶段 V0.3：基础 Git 操作
 
-进入前先完成 V0.2 核心并复核比较结果、只读隔离与错误恢复；试用结果用于选择先完善哪个操作。第三阶段写入只来自用户明确选择的具体操作，Codex/MCP 不自动取得写权限。
+原顺序要求先完成 V0.2 核心。2026-10-06 用户按日常 Git 工具目标批准调整顺序：先实施 [第一批：写操作基础与按文件暂存/取消暂存](2026-10-06-stage-files.md)，再安排普通提交、分支操作、比较、历史调查和前后变化对照。2B 保持未完成，不作为基础暂存能力的硬性依赖。比较正确性、只读隔离、操作结果核实与错误恢复仍是各批验收要求。第三阶段写入只来自用户明确选择的具体操作，Codex/MCP 不自动取得写权限。
 
 ### 3-01：写用例边界、预览与结果回执
 
-**文件：** 新增 `packages/operations/src/index.ts`、`preview.ts`、`queue.ts`、`receipts.ts`，`packages/git-write/src/index.ts`；新增 `apps/web/src/features/operations/OperationPreview.tsx`；扩展 contracts；新增 `tests/integration/operations.test.ts`。
+**已落地文件：** `packages/operations/src/index.ts`、`preview.ts`、`queue.ts`、`receipts.ts`，`packages/git-write/src/index.ts`、`runner.ts`、`platform.ts`；`apps/web/src/features/operations/OperationControls.tsx`、`useOperations.ts`；独立 operations 契约与集成测试。第一批只开放 stage-files / unstage-files；提交和分支能力仍后置。
 
 - [ ] 采用具体操作集合：stage-files、unstage-files、commit、create-branch、switch-branch。接口不接受任意 Git 命令、shell 字符串或任意选项。
-- [ ] 预览产生一次性 previewId，绑定 worktree、操作、明确路径、HEAD/index/相关文件及引用前置指纹、影响说明和过期时间；初始有效期 60 秒。执行只接受 previewId 与 operationId，不接受客户端重新提交的路径或参数覆盖预览。
-- [ ] 同一 worktree 串行写；影响共享引用的操作还需按 commonGitDir 协调。预览不长期占锁，执行前再次读取核验；任一前提改变就返回过期并重新预览。
-- [ ] 外部 Git 不受应用锁控制：依赖 Git 本身锁/引用检查，并在执行后核实真实结果，不承诺跨外部编辑器的原子事务。写期间暂停本会话自动刷新，完成后整体失效旧观测。
-- [ ] 在仓库外持久化 operationId 与执行状态。重试同一个 ID 返回已知回执；超时、断线或重启状态不明时先重读核对，不能直接重复提交。无法唯一判定则显示“结果待核实”，保留用户处理入口。
+- [x] 预览产生一次性 previewId，绑定 worktree、操作、明确路径、HEAD/index/相关文件及引用前置指纹、影响说明和过期时间；初始有效期 60 秒。执行只接受 previewId 与 operationId，不接受客户端重新提交的路径或参数覆盖预览。
+- [x] 同一 worktree 串行写；当前进程按 commonGitDir 排队，跨应用实例按 worktree 加锁。预览不长期占锁，执行前再次读取核验；任一前提改变就返回过期并重新预览。未来共享引用写入另补跨进程协调。
+- [x] 外部 Git 不受应用锁控制：依赖 Git 本身 index.lock，并在执行后核实真实结果，不承诺跨外部编辑器的原子事务。写期间暂停同工作区会话读取，完成后整体失效旧观测。
+- [x] 在仓库外持久化 operationId 与执行状态。重试同一个 ID 返回已知回执；超时、断线或重启状态不明时先重读核对，不能直接重复执行。无法唯一判定则显示“结果待核实”，保留用户处理入口。
 - [ ] 写执行器单独声明 hooks、签名和内容过滤器策略。首批拒绝会触发外部 clean/smudge/process 转换的写入，覆盖当前及目标版本属性；不能将只读 LFS 支持推断为安全写支持。commit 的正常 hooks/签名及 switch 的 post-checkout hook 仅在用户明确了解并信任本地仓库后执行，预览说明可能的影响；不静默禁用 Git 原有检查。
 
 **验收：** 预览后外部改文件、暂存、移动分支都被拒绝；两次点击只执行一次；两个 worktree 对共享 ref 的操作不会在本进程竞态；hook 改 index、提交成功但响应丢失、子进程超时均有可核对回执，不自动重试或强制回滚。
 
 ### 3-02：按文件暂存与取消暂存
 
-**文件：** `packages/operations/src/stage.ts`、`packages/git-write/src/stage.ts`、`apps/web/src/features/operations/StageActions.tsx`；新增 `tests/integration/stage.test.ts`。
+**已落地文件：** 复用 3-01 的协调器与执行器，不为两个索引操作建立重复管道；`tests/integration/git-write.test.ts`、`operations.test.ts`、`operations-crash.test.ts`、`operation-transport.test.ts` 和 `tests/e2e/operations.spec.ts`。
 
-- [ ] 首批只做用户勾选文件的完整暂存/取消暂存；按行、按 hunk 暂存单独后置。重命名绑定源/目标双方，路径以参数数组和明确 pathspec 传递。
-- [ ] 操作前展示具体文件、比较基准和目标内容；禁止隐式全量暂存。
-- [ ] 取消暂存只改变 index，保留工作文件；覆盖 unborn、新增、删除和改名，不用清理工作区的命令替代。
+- [x] 首批只做用户勾选文件的完整暂存/取消暂存；按行、按 hunk 暂存单独后置。重命名绑定源/目标双方，复制只选目标；路径通过 NUL 分隔的固定 plumbing 输入传递，不拼 shell。
+- [x] 操作前展示具体文件、比较基准和目标内容；禁止隐式全量暂存。
+- [x] 取消暂存只改变 index，保留工作文件；覆盖 unborn、新增、删除和改名，不用清理工作区的命令替代。
 
 **验收：** V1/V2/V3 场景中暂存后 index 为 V3，取消暂存后工作文件仍为 V3；未选文件不变；空仓库、新增/删除、中文/换行/前导连字符路径正确；冲突首版禁止普通 stage 操作并解释限制。
 
@@ -255,8 +255,8 @@ node scripts/benchmark.mjs
 
 1. 盘点旧验收缺口，完成 2A-01 的单路径桌面原型；以原型证据固化 ADR 和安装测试入口。
 2. 2A-02 与 2A-03 在约定契约后可并行，随后完成 2A-04，交付可日常使用的只读版本。
-3. 2B-01 与 2B-02 可分工；2B-03 的文件读取共用底层边界，合并后由 2B-04 验证比较结果及两个宿主的一致性。
-4. 第三阶段先完成 3-01，再依次交付 3-02、3-03、3-04，最后进行 3-05；每类操作单独验收，不一次开放全部按钮。
+3. 已批准先交付 3-01 的暂存基础和 3-02，再依次安排 3-03 普通提交、3-04 分支操作；每类操作单独验收。
+4. 随后继续比较、历史调查和前后变化对照，回到 2B 的相应任务补齐只读增强；V0.3 的整体验收继续按 3-05 跟踪。
 
 ## 8. 后置项与来源
 
@@ -267,4 +267,4 @@ node scripts/benchmark.mjs
 - 写操作边界依据：[Git 内容过滤器](https://git-scm.com/docs/gitattributes)、[Git hooks](https://git-scm.com/docs/githooks)。过滤器和 hooks 的作用必须按具体操作检查，不能沿用只读命令的假设。
 - 本地已验证基线：66 项单元/集成测试、7 项浏览器测试与真实 macOS 目录选择；详见前述验收记录。这些数字不包含本文尚未实现的功能。
 
-2026-10-06 施工进展：2A 导航、文本比较、自动刷新及 macOS 桌面本机链路已实现并验证，详见 [2A 证据](../../verification/v0.2-a.md)。2A-01 的跨平台/完整性能对照与 2A-04 的远程 CI、Codex 自动发现仍未全部验收，所以保留相关复合复选框；2B 和第三阶段未施工。
+2026-10-06 施工进展：2A 导航、文本比较、自动刷新及 macOS 桌面本机链路已实现并验证，详见 [2A 证据](../../verification/v0.2-a.md)。2A-01 的跨平台/完整性能对照与 2A-04 的远程 CI、Codex 自动发现仍未全部验收，所以保留相关复合复选框。第三阶段第一批已实现按文件暂存/取消暂存与独立写入基础，见 [第一批验收](../../verification/2026-10-06-stage-files.md)；2B、普通提交、分支写入及 V0.3 整体验收仍未完成。

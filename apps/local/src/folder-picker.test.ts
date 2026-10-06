@@ -21,7 +21,9 @@ async function waitForFile(path: string) {
 }
 afterEach(async () => { await Promise.all(temporary.splice(0).map(directory => rm(directory, { recursive: true, force: true }))); });
 
-describe('native folder picker process boundary (no UI launched)', () => {
+// The macOS helper protocol uses POSIX executables/signals; Windows cannot run
+// these fixture executables. Windows repository/stdio tests remain enabled.
+describe.skipIf(process.platform === 'win32')('native folder picker process boundary (no UI launched)', () => {
   it('preserves a selected absolute folder with Unicode, quotes, spaces and newlines', async () => {
     const path = '/tmp/中文 repo/quote\'"/line\nbreak';
     const script = await helper(`process.stdout.write(${JSON.stringify(JSON.stringify({ cancelled: false, path }))});`);

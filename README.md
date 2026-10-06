@@ -2,6 +2,8 @@
 
 本地 Git 可视化工具，用于查看工作区、暂存区、提交历史和仓库引用。
 
+第一批写操作新增按文件暂存、取消暂存：勾选文件后预览并确认，执行结果可核对；CLI/inspect 与历史查询仍只读。实现与验证边界见 [第一批验收](docs/verification/2026-10-06-stage-files.md)。
+
 已实现第一轮 MVP 和第二阶段第一批（2A）：只读桌面窗口、仓库导航、并排差异和自动刷新。macOS Apple silicon 的安装副本、CLI 与原生界面已运行验证；其他平台和 Codex skill 自动发现的证据边界见 [2A 验收记录](docs/verification/v0.2-a.md)。
 
 界面以仓库切换、历史范围、文件列表和差异查看为主体。已完成入口与布局、差异与文件导航、刷新与反馈三轮调整，见 [第一轮验收](docs/verification/2026-10-06-interface-round1.md)、[第二轮验收](docs/verification/2026-10-06-interface-round2.md) 和 [第三轮验收](docs/verification/2026-10-06-interface-round3.md)。此前的教学界面移除记录见 [界面调整验收](docs/verification/2026-10-06-tool-ui.md)。
@@ -17,7 +19,7 @@
 
 第一版范围是本地只读查看与一个 Codex 入口，任务前后基线和 Git 写操作放在后续阶段。
 
-接下来的工作见 [第二、第三阶段实施计划](docs/superpowers/plans/2026-10-06-next-stages.md)：第二阶段吸收 oil-git 的导航、差异查看和桌面交付经验，再加入任务前后比较与历史调查；第三阶段逐项加入暂存、取消暂存、提交、创建和切换分支。下面列出已实现的 2A 能力；2B 与第三阶段仍待施工。
+接下来的工作见 [第二、第三阶段实施计划](docs/superpowers/plans/2026-10-06-next-stages.md)。按日常 Git 工具的使用目标，[第一批写操作](docs/superpowers/plans/2026-10-06-stage-files.md)已前移；后续依次安排普通提交、分支操作、比较、历史调查和前后变化对照。2B 的完整范围以及其余写操作仍待施工。
 
 现有查看器的交互调整按 [三轮界面优化计划](docs/superpowers/plans/2026-10-06-interface-refinement.md) 单独跟踪。第一轮整理布局和入口，第二轮优化差异查看与文件导航，第三轮统一刷新反馈并回归验收；界面轮次不等同于上述产品阶段。
 
@@ -66,6 +68,8 @@ pnpm stop
 
 ## 当前功能
 
+- 按文件勾选暂存或取消暂存，预览中显示实际比较与明确文件范围；暂存整个当前文件，取消暂存保留工作文件。预览 60 秒失效，HEAD、index、内容或配置变化时拒绝旧预览；断线或重启后先核实持久回执，不自动重复执行。
+- 首批写入支持常规 index 中的普通文件、链接本身及新增/删除/改名；冲突、进行中的操作、稀疏/split index、不支持的路径与内容转换会明确拒绝。整文件暂存暂不支持 text/eol/ident/working-tree-encoding 或 autocrlf 转换，不运行内容过滤器或 post-index-change hook。macOS Apple silicon 已验收；Windows 暂未开放写入，现有读取入口保持原语义。
 - 顶部仓库切换器集中提供打开仓库、最近仓库、worktree 切换、完整路径及复制、手动路径；支持根目录和子目录识别，并继续使用 macOS 原生文件夹窗口。
 - 分开查看已暂存、未暂存、未跟踪内容；同一文件的两份 diff 保留各自基准。
 - 显示分支、HEAD、尚无提交、detached HEAD、冲突及进行中的操作。

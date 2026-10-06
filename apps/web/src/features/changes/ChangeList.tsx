@@ -1,7 +1,8 @@
-import { useRef, type KeyboardEvent, type Ref } from 'react';
+import { useRef, type KeyboardEvent, type Ref, type ReactNode } from 'react';
 import type { ChangeEntry, Overview } from '@git-view/contracts';
 import { listNavigationTarget } from '../navigation/list-navigation';
 import { matchesFileFilter } from './change-filter';
+import { operationLabel, type OperationKind, type Operations } from '../operations/useOperations';
 import './change-list.css';
 
 const groups = [
@@ -14,12 +15,13 @@ const kindLabel: Record<string, string> = { M: '修改', A: '新增', D: '删除
 
 type ChangeListProps = {
   filter: string;
+  disabled?: boolean;
   onFilter: (value: string) => void;
   selected?: string;
   onSelect: (entry: ChangeEntry, activate: boolean) => void;
   scrollRef?: Ref<HTMLDivElement>;
   onScroll?: (top: number) => void;
-} & ({ scope: 'changes'; changes: Overview['changes'] } | { scope: 'history'; entries: ChangeEntry[] });
+} & ({ scope: 'changes'; changes: Overview['changes']; operations?: Operations; actions?: ReactNode } | { scope: 'history'; entries: ChangeEntry[] });
 
 export function ChangeList(props: ChangeListProps) {
   const root = useRef<HTMLDivElement>(null);
@@ -43,18 +45,26 @@ export function ChangeList(props: ChangeListProps) {
   }
 
   function row(entry: ChangeEntry) {
-    return <button key={entry.id} data-entry-id={entry.id} className={`file-row ${props.selected === entry.id ? 'selected' : ''}`} onClick={() => props.onSelect(entry, true)} onKeyDown={keyboard} aria-pressed={props.selected === entry.id} disabled={!entry.supported} title={entry.supported ? entry.path : `${entry.path}：此路径无法可靠寻址，不能展开详情`}>
+    const kind: OperationKind = entry.comparison === 'head-index' ? 'unstage-files' : 'stage-files';
+    const operations = props.scope === 'changes' ? props.operations : undefined;
+    const checkable = operations && props.scope === 'changes' && entry.supported && !props.changes.conflicts.some(conflict => conflict.id === entry.id);
+    const button = <button key={entry.id} data-entry-id={entry.id} className={`file-row ${props.selected === entry.id ? 'selected' : ''}`} onClick={() => props.onSelect(entry, true)} onKeyDown={keyboard} aria-pressed={props.selected === entry.id} disabled={props.disabled || !entry.supported} title={entry.supported ? entry.path : `${entry.path}：此路径无法可靠寻址，不能展开详情`}>
       <span className={`change-kind kind-${entry.kind[0]}`}>{entry.kind === '?' ? '+' : entry.kind[0]}</span>
       <span className="file-name">{entry.path}{entry.oldPath && <small>← {entry.oldPath}</small>}</span>
       <span className="file-kind-label">{entry.supported ? kindLabel[entry.kind[0]!] || entry.kind : '不支持路径'}</span>
     </button>;
+    if (!checkable) return button;
+    const checked = operations.state.entryIds.includes(entry.id);
+    const disabled = props.disabled || operations.blocked || (operations.state.entryIds.length > 0 && operations.state.kind !== kind);
+    return <div key={entry.id} className="file-operation-row"><label className="file-operation-checkbox" title={`${operationLabel(kind)} ${entry.path}`}><input type="checkbox" checked={checked} disabled={disabled} aria-label={`选择${operationLabel(kind)} ${entry.path}`} onChange={() => operations.toggle(entry, kind)}/></label>{button}</div>;
   }
 
   return <div className={`change-list change-list-${props.scope}`} ref={root} aria-label={props.scope === 'changes' ? '当前改动文件' : '提交变化文件'}>
     <div className="change-list-filter">
-      <input type="search" value={props.filter} onChange={event => props.onFilter(event.target.value)} placeholder="筛选文件" aria-label={props.scope === 'changes' ? '筛选当前改动文件' : '筛选提交文件'}/>
+      <input type="search" disabled={props.disabled} value={props.filter} onChange={event => props.onFilter(event.target.value)} placeholder="筛选文件" aria-label={props.scope === 'changes' ? '筛选当前改动文件' : '筛选提交文件'}/>
       {filtering && <span aria-live="polite">{visible.length} / {entries.length}</span>}
     </div>
+    {props.scope === 'changes' && props.actions}
     <div ref={props.scrollRef} className={props.scope === 'changes' ? 'file-groups' : 'filtered-commit-files'} onScroll={event => props.onScroll?.(event.currentTarget.scrollTop)}>
       {filtering && !visible.length ? <p className="file-filter-empty" role="status">无匹配文件</p> : props.scope === 'history' ? (visible.length ? visible.map(row) : <p className="file-filter-empty">无变化文件</p>) : groups.map(group => {
         const all = props.changes[group.key];

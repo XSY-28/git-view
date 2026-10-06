@@ -1,4 +1,4 @@
-import type { ApiRequest } from '@git-view/contracts';
+import type { ApiRequest, OperationRequest } from '@git-view/contracts';
 
 interface TauriBridge {
   core: { invoke<T>(command: string, args?: Record<string, unknown>): Promise<T> };
@@ -26,6 +26,7 @@ async function desktop(message: Record<string, unknown>, signal?: AbortSignal): 
 const hasDesktop = () => typeof window !== 'undefined' && window.__TAURI__ !== undefined;
 export const transport = {
   request: (request: ApiRequest, signal?: AbortSignal) => hasDesktop() ? desktop({ operation: 'request', request }, signal) : post('/api', request, signal),
+  operation: (request: OperationRequest, signal?: AbortSignal) => hasDesktop() ? desktop({ operation: 'write', request }, signal) : post('/api/operations', request, signal),
   session: (sessionId: string) => hasDesktop() ? desktop({ operation: 'session', sessionId }) : post('/api/session', { schemaVersion: 1, sessionId }),
   watch: (sessionId: string, signal?: AbortSignal) => hasDesktop() ? desktop({ operation: 'watch', sessionId }, signal) : post('/api/watch', { schemaVersion: 1, sessionId }, signal),
   authenticate: (ticket: string) => post('/auth', { schemaVersion: 1, ticket }),

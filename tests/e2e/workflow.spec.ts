@@ -82,7 +82,11 @@ test('real partial staging, history, refresh and tool layout', async ({ page }) 
   await writeFile(join(repo, 'hello.txt'), 'version two staged\n');
   await page.waitForTimeout(750);
   await page.getByRole('button', { name: /刷新/ }).first().click();
-  await expect(page.getByText('此前选中的文件已不在当前改动中。请从最新列表重新选择。')).toBeVisible();
+  // The watcher may have already shown and dismissed the transient notice before
+  // the manual refresh. Assert durable selection/diff state, not toast timing.
+  await expect(page.locator('.group-unstaged .file-row').filter({ hasText: 'hello.txt' })).toHaveCount(0);
+  await expect(page.locator('.file-row[aria-pressed="true"]')).toHaveCount(0);
+  await expect(page.locator('.code-scroll')).toHaveCount(0);
   await page.setViewportSize({ width: 390, height: 844 });
   const panels = page.getByRole('navigation', { name: '窄窗口面板' });
   await expect(panels.getByRole('button')).toHaveText(['历史范围', '文件列表', '查看详情']);

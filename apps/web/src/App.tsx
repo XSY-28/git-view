@@ -8,6 +8,8 @@ import { ReadCancellation, type ReadSlot } from './state/read-coordination';
 import { FEEDBACK_TIMING, ReadFeedback, type ReadState } from './features/feedback/ReadFeedback';
 import { DiffView } from './features/changes/DiffView';
 import { ChangeList } from './features/changes/ChangeList';
+import { useOperations } from './features/operations/useOperations';
+import { OperationDialog, OperationFeedback, OperationSelection } from './features/operations/OperationControls';
 import { matchesFileFilter } from './features/changes/change-filter';
 import { HistoryGraph, type LocateRequest } from './features/history/HistoryGraph';
 import { RepositorySidebar } from './features/navigation/RepositorySidebar';
@@ -67,12 +69,24 @@ export function App({ initialSessionId, ticket }: { initialSessionId?: string; t
   const [repositoryActivity, setRepositoryActivity] = useState<'picking' | 'opening' | null>(null);
   const [openError, setOpenError] = useState('');
   const [watchError, setWatchError] = useState('');
+  const operations = useOperations({
+    overview: overview.value,
+    available: Boolean(session && overview.value && !overview.loading && !overview.stale && !overview.error && !overview.cancelled && overview.value.complete && !overview.value.changes.conflicts.length && !overview.value.operation.length && !repositoryActivity),
+    beforeExecute: () => {
+      refreshQueue.current.reset(); pendingRefresh.current = false; gate.current.cancelAll();
+      const stop = <T,>(setter: ResourceSetter<T>) => setter(previous => ({ ...previous, loading: false, stale: Boolean(previous.value) }));
+      stop(setOverview); stop(setNavigation); stop(setHistory); stop(setCommit); stop(setDiff); stop(setCommitDiff);
+    },
+    afterExecute: () => { refreshQueue.current.reset(); refresh('recovery'); },
+  });
+  const operationBusy = operations.state.phase === 'executing' || operations.state.phase === 'checking';
 
   async function copyText(value: string, label: string) {
     try { await navigator.clipboard.writeText(value); notify(`已复制${label}。`); }
     catch { notify('无法访问剪贴板，请手动复制。'); }
   }
   function cancel(slot: ReadSlot) {
+    if (operations.executing.current) return;
     refreshQueue.current.reset(); pendingRefresh.current = false;
     const stop = <T,>(setter: ResourceSetter<T>) => () => setter(previous => ({ ...previous, loading: false, error: undefined, cancelled: true, stale: Boolean(previous.value) }));
     const stops = { overview: stop(setOverview), navigation: stop(setNavigation), history: stop(setHistory), commit: stop(setCommit), diff: stop(setDiff), 'commit-diff': stop(setCommitDiff) };
@@ -82,6 +96,7 @@ export function App({ initialSessionId, ticket }: { initialSessionId?: string; t
     }
   }
   function retry(slot: Exclude<ReadSlot, 'diff' | 'commit-diff'>) {
+    if (operations.executing.current) return;
     cancellation.current.resume(slot);
     if (slot === 'overview') loadOverview();
     else if (slot === 'navigation') loadNavigation();
@@ -89,7 +104,7 @@ export function App({ initialSessionId, ticket }: { initialSessionId?: string; t
     else if (slot === 'commit') loadSelectedCommit(true);
   }
   async function query<T>(slot: ReadSlot, fields: SessionFields, schema: z.ZodType<T>, setter: ResourceSetter<T>, onSuccess?: (data: T) => void, keep = false) {
-    const active = currentSession.current; if (!active || cancellation.current.isCancelled(slot)) return;
+    const active = currentSession.current; if (!active || operations.executing.current || cancellation.current.isCancelled(slot)) return;
     const request = { ...fields, schemaVersion: 1, sessionId: active.sessionId, generation: active.generation, requestId: 'pending' } as ApiRequest;
     const identity = gate.current.begin(slot, queryKey(request, active.repository.worktreeId)); request.requestId = identity.requestId;
     let recovering = false;
@@ -122,31 +137,36 @@ export function App({ initialSessionId, ticket }: { initialSessionId?: string; t
     try { const result = await api({ schemaVersion: 1, action: 'recents', requestId: identity.requestId }, z.array(recentSchema), identity.controller.signal); if (gate.current.accepts(identity)) { setRecents(result.data); if (restore && !controller.current.explicitOpen && !repositoryBusy.current && !controller.current.pendingPath && !currentSession.current && result.data[0]) void openRepository(result.data[0].path, false); } } catch { /* Opening a repository remains available if local preferences are unavailable. */ }
   }
   function selectChange(entry: ChangeEntry, nextOverview = currentOverview.current, navigate = true, keep = false, automatic = false) {
-    if (!entry.supported || !matchesFileFilter(entry, controller.current.fileFilter('changes'))) return;
+    if (operations.executing.current || !entry.supported || !matchesFileFilter(entry, controller.current.fileFilter('changes'))) return;
+    if (!automatic) operations.dismissPreview();
     if (!automatic) cancellation.current.resume('diff');
     selection.current = entry; setSelected(entry.id); if (navigate) setMobilePanel('diff'); if (!keep) staleRecoveries.current = 0;
     if (!nextOverview) return;
     void query('diff', { action: 'change', entryId: entry.id, fingerprint: nextOverview.fingerprint }, diffSchema, setDiff, undefined, keep);
   }
   function selectCommitFile(entry: ChangeEntry, oid = commitSelection.current, keep = false, automatic = false) {
-    if (!oid || !entry.supported || !matchesFileFilter(entry, controller.current.fileFilter('history'))) return;
+    if (operations.executing.current || !oid || !entry.supported || !matchesFileFilter(entry, controller.current.fileFilter('history'))) return;
     if (!automatic) cancellation.current.resume('commit-diff');
     commitFileSelection.current = entry; setSelectedCommitFile(entry.id);
     void query('commit-diff', { action: 'commit-change', oid, entryId: entry.id }, diffSchema, setCommitDiff, undefined, keep);
   }
   function clearFileSelection(scope: MainView) {
+    if (operations.executing.current) return;
     controller.current.clearSelection(scope);
     cancellation.current.resume(scope === 'changes' ? 'diff' : 'commit-diff');
     if (scope === 'changes') { gate.current.cancel('diff'); selection.current = null; setSelected(undefined); setDiff(empty()); }
     else { gate.current.cancel('commit-diff'); commitFileSelection.current = null; setSelectedCommitFile(undefined); setCommitDiff(empty()); }
   }
   function filterFiles(scope: MainView, value: string) {
+    if (operations.executing.current) return;
+    if (scope === 'changes') operations.invalidate();
     controller.current.fileFilter(scope, value);
     setFileFilters(previous => ({ ...previous, [scope]: value }));
     const entry = scope === 'changes' ? selection.current : commitFileSelection.current;
     if (entry && !matchesFileFilter(entry, value)) clearFileSelection(scope);
   }
   function selectCommit(node: CommitNode, activate = true) {
+    if (operations.executing.current) return;
     commitSelection.current = node.oid; setSelectedCommit(node.oid); if (activate) { setHistoryDetailsOpen(true); setMobilePanel('diff'); }
     gate.current.cancel('commit-diff'); setCommitDiff(empty()); setSelectedCommitFile(undefined); commitFileSelection.current = undefined;
     cancellation.current.resume('commit');
@@ -173,7 +193,7 @@ export function App({ initialSessionId, ticket }: { initialSessionId?: string; t
   }
   function requestLocate(targetOid: string) { setLocateRequest({ version: ++locateVersion.current, targetOid }); }
   async function loadHistory(scope = historyScope.current, cursor?: string, locate = false, ref = historyRef.current, order: HistoryOrder = scope === 'all' ? allHistoryOrder.current : 'topo') {
-    const active = currentSession.current; if (!active || cancellation.current.isCancelled('history')) return;
+    const active = currentSession.current; if (!active || operations.executing.current || cancellation.current.isCancelled('history')) return;
     const selectedRef = scope === 'ref' ? ref : undefined;
     const scopeChanged = scope !== historyScope.current || selectedRef !== historyRef.current || order !== historyOrder.current;
     historyScope.current = scope; historyRef.current = selectedRef; historyOrder.current = order;
@@ -230,9 +250,10 @@ export function App({ initialSessionId, ticket }: { initialSessionId?: string; t
     }, true);
   }
   function loadNavigation() { void query('navigation', { action: 'navigation' }, navigationSchema, setNavigation, undefined, true); }
-  function filterHistory(scope: HistoryScope, ref?: string) { cancellation.current.resume('history'); setView('history'); setMobilePanel('list'); loadHistory(scope, undefined, false, ref); }
-  function sortHistory(order: HistoryOrder) { cancellation.current.resume('history'); void loadHistory('all', undefined, false, undefined, order); }
+  function filterHistory(scope: HistoryScope, ref?: string) { if (operations.executing.current) return; cancellation.current.resume('history'); setView('history'); setMobilePanel('list'); loadHistory(scope, undefined, false, ref); }
+  function sortHistory(order: HistoryOrder) { if (operations.executing.current) return; cancellation.current.resume('history'); void loadHistory('all', undefined, false, undefined, order); }
   function adoptSession(next: RepositorySession) {
+    operations.activate(next);
     setHistoryDetailsOpen(false);
     refreshQueue.current.reset(); cancellation.current.reset(); pendingRefresh.current = false; setLocateRequest(undefined); currentSession.current = next; setSession(next); currentOverview.current = undefined; currentHistory.current = undefined;
     gate.current.setContext(next.sessionId, next.generation);
@@ -247,6 +268,7 @@ export function App({ initialSessionId, ticket }: { initialSessionId?: string; t
     if (memory.commit) loadSelectedCommit(false);
   }
   async function openRepository(path?: string, explicit = true) {
+    if (operations.executing.current) return;
     if (path !== undefined && !path.trim()) return;
     if (explicit) controller.current.explicitOpen = true;
     if (repositoryBusy.current) { if (path !== undefined) controller.current.pendingPath = path === openingPath.current ? undefined : path; return; }
@@ -287,12 +309,16 @@ export function App({ initialSessionId, ticket }: { initialSessionId?: string; t
     setRepositoryActivity(null); controller.current.pendingPath = undefined; if (resume && pendingRefresh.current) { pendingRefresh.current = false; refreshQueue.current.reset(); refresh(); } else pendingRefresh.current = false;
   }
   function refresh(source: 'manual' | 'focus' | 'change' | 'recovery' = 'manual') {
+    if (operations.executing.current) return;
     if (source === 'focus' && cancellation.current.hasCancelled()) return;
     if (repositoryBusy.current) { pendingRefresh.current = true; return; }
     if (!currentSession.current) return;
+    operations.invalidate('仓库状态已更新，请重新选择并预览。');
     refreshQueue.current.request(performRefresh);
   }
   function performRefresh() {
+    if (operations.executing.current) return;
+    operations.invalidate('仓库状态已更新，请重新选择并预览。');
     if (repositoryBusy.current) { pendingRefresh.current = true; return; }
     const active = currentSession.current; if (!active) return;
     const next = { ...active, generation: active.generation + 1 }; currentSession.current = next; setSession(next);
@@ -305,6 +331,7 @@ export function App({ initialSessionId, ticket }: { initialSessionId?: string; t
     if (commitSelection.current) loadSelectedCommit(true);
   }
   function locateHead() {
+    if (operations.executing.current) return;
     setView('history'); setMobilePanel('list'); const head = currentOverview.current?.head;
     if (!head || head.kind === 'unborn') { notify('仓库尚无首次提交，目前没有可定位的 HEAD 提交。'); return; }
     const target = history.value?.commits.find(node => node.oid === head.oid);
@@ -390,15 +417,15 @@ export function App({ initialSessionId, ticket }: { initialSessionId?: string; t
   const commitFeedback = <ReadFeedback state={commit} hasValue={Boolean(commit.value)} scope="提交详情" compact className="commit-read-state" onRetry={() => retry('commit')} onCancel={() => cancel('commit')}/>;
 
   return <div className="app-shell">
-    <header className="app-header">
+    <header className="app-header" inert={operationBusy}>
       <span className="app-mark" title="Git View" aria-label="Git View"><svg viewBox="0 0 30 30" aria-hidden="true"><path d="M8 5v13a6 6 0 0 0 6 6h7M8 11h8a5 5 0 0 0 5-5"/><circle cx="8" cy="5" r="3"/><circle cx="21" cy="5" r="3"/><circle cx="22" cy="24" r="3"/></svg></span>
       <RepositorySwitcher root={session?.repository.worktreeRoot} recents={recents} worktrees={navigation.value?.worktrees} open={showRepository}
         onOpenChange={open => { setShowRepository(open); if (open) void loadRecents(); }} onOpen={path => void openRepository(path)}
-        onCopyPath={() => { if (session) copyText(session.repository.worktreeRoot, '仓库路径'); }} busy={opening} disabled={startup.loading || Boolean(startup.error)}
+        onCopyPath={() => { if (session) copyText(session.repository.worktreeRoot, '仓库路径'); }} busy={opening} disabled={operationBusy || startup.loading || Boolean(startup.error)}
         repoPath={repoPath} onRepoPathChange={setRepoPath} error={openError}/>
       {session && <div className="head-line" aria-label="仓库当前位置"><span className="head-caption">{data?.head.kind === 'detached' ? '当前位置' : '当前分支'}</span><strong title={branch}>{branch || '读取分支中'}</strong><code title={headOid}>{head || '—'}</code></div>}
-      <div className="toolbar-status"><span className="readonly">本地 · 只读</span>
-        {session && <div className="read-status"><ReadFeedback state={overview} hasValue={Boolean(data)} scope="仓库状态" compact className="overview-read-state" idleLabel={data ? `读取于 ${timeLabel(data.stamp.finishedAt)}` : undefined} onRetry={() => retry('overview')} onCancel={() => cancel('overview')}/><button className="refresh-button" onClick={() => refresh()} disabled={opening} aria-label="刷新仓库"><span aria-hidden="true">↻</span> 刷新</button></div>}
+      <div className="toolbar-status"><span className="readonly">本地 Git</span>
+        {session && <div className="read-status"><ReadFeedback state={overview} hasValue={Boolean(data)} scope="仓库状态" compact className="overview-read-state" idleLabel={data ? `读取于 ${timeLabel(data.stamp.finishedAt)}` : undefined} onRetry={() => retry('overview')} onCancel={() => cancel('overview')}/><button className="refresh-button" onClick={() => refresh()} disabled={opening || operationBusy} aria-label="刷新仓库"><span aria-hidden="true">↻</span> 刷新</button></div>}
       </div>
     </header>
 
@@ -407,8 +434,9 @@ export function App({ initialSessionId, ticket }: { initialSessionId?: string; t
         <span><span className="spinner" />{repositoryActivity === 'picking' ? '请在系统窗口中选择仓库文件夹。' : '正在验证所选文件夹并读取仓库…'}</span>
         <button onClick={() => cancelRepositoryOpen()}>取消</button>
       </div>}
-      {session && <div className={`repository-layout mobile-${mobilePanel}`}><RepositorySidebar key={session.repository.worktreeId} initialSearch={controller.current.search()} onSearch={value => controller.current.search(value)} navigation={navigation.value} scope={historyScope.current} selectedRef={historyRef.current} readState={navigation} onFilter={filterHistory} onRetry={() => retry('navigation')} onCancel={() => cancel('navigation')}/><div className="repository-main">
+      {session && <div className={`repository-layout mobile-${mobilePanel}`} inert={operationBusy}><RepositorySidebar key={session.repository.worktreeId} initialSearch={controller.current.search()} onSearch={value => controller.current.search(value)} navigation={navigation.value} scope={historyScope.current} selectedRef={historyRef.current} readState={navigation} onFilter={filterHistory} onRetry={() => retry('navigation')} onCancel={() => cancel('navigation')}/><div className="repository-main">
         {data && (data.operation.length > 0 || !data.complete || data.changes.conflicts.length > 0) && <div className="operation-banner" role="status">{data.operation.length > 0 && <strong>进行中的操作：{data.operation.join('、')}。 </strong>}{data.changes.conflicts.length > 0 && <strong>{data.changes.conflicts.length} 个未解决冲突。 </strong>}{!data.complete && <strong>当前观测不完整。 </strong>}{data.warnings.join(' ')}</div>}
+        <OperationFeedback operations={operations}/>
         {watchError && <div className="operation-banner" role="alert">{watchError}</div>}
         {info && <div className="feedback-toast" role="status"><span>{info.message}</span></div>}
         <nav className="view-tabs" aria-label="主视图"><button className={view === 'changes' ? 'active' : ''} onClick={() => { setView('changes'); setMobilePanel('list'); }}>当前改动 <span>{total}</span></button><button className={view === 'history' ? 'active' : ''} onClick={() => { setView('history'); setMobilePanel('list'); if (!history.value && !history.loading) retry('history'); }}>提交历史 <span>{history.value?.commits.length || '·'}</span></button>{view === 'history' && <button className="locate-button" disabled={!headOid || history.loading} title={headInHistory ? '选中并定位当前 HEAD' : '查看从当前 HEAD 出发的历史'} onClick={locateHead}>{headInHistory ? '定位 HEAD' : '查看 HEAD 历史'}</button>}{view === 'history' && selectedCommit && !historyDetailsOpen && <button className="history-open-details" onClick={() => { setHistoryDetailsOpen(true); setMobilePanel('diff'); }}>查看提交详情</button>}</nav>
@@ -416,7 +444,7 @@ export function App({ initialSessionId, ticket }: { initialSessionId?: string; t
 
         <main ref={historyPane.workspaceRef} style={view === 'history' ? historyPane.workspaceStyle : undefined} data-details={historyDetailsOpen ? 'open' : 'closed'} className={`workspace ${view === 'history' ? 'history-workspace' : ''} mobile-${mobilePanel}`}>
           <aside className="list-panel">
-            {view === 'changes' ? <><div className="panel-heading"><h2>文件变化</h2><span>{total} 项比较</span></div>{data ? <ChangeList scope="changes" changes={data.changes} filter={fileFilters.changes} onFilter={value => filterFiles('changes', value)} selected={selected} onSelect={(entry, activate) => selectChange(entry, currentOverview.current, activate)} scrollRef={fileScroll} onScroll={top => controller.current.scroll('changes', top)}/> : <p className="panel-wait">{overview.loading ? '正在读取工作区…' : '读取概览后显示文件。'}</p>}</> : <><div className="panel-heading"><h2>提交关系</h2><div className="history-heading-controls"><span className="history-range-label"><span>{historyScopeLabel(historyScope.current, historyRef.current)}</span></span>{historyScope.current === 'all' && <select aria-label="历史排序" className="history-order" value={allHistoryOrder.current} title="时间优先：优先展示较新的提交，保留父子关系。分支聚合：尽量连续展示同一条历史线。" onChange={event => { const order = event.target.value; if (order === 'date' || order === 'topo') sortHistory(order); }}><option value="date">时间优先</option><option value="topo">分支聚合</option></select>}</div></div><ReadFeedback state={history} hasValue={Boolean(history.value)} scope="提交历史" className="history-read-state" onRetry={() => retry('history')} onCancel={() => cancel('history')}/>{history.value?.shallow && <div className="history-boundary-note">浅克隆 · 历史不完整</div>}{history.value?.commits.length ? <HistoryGraph fullWidth={!historyDetailsOpen} commits={history.value.commits} selected={selectedCommit} headOid={history.value.headOid} onSelect={selectCommit} key={`${session.repository.worktreeId}:${historyScope.current}:${historyRef.current || ''}:${historyOrder.current}`} locateRequest={locateRequest} onLocateConsumed={version => setLocateRequest(current => current?.version === version ? undefined : current)} initialTop={controller.current.position(`history:${historyScope.current}:${historyRef.current || ''}:${historyOrder.current}`)} onScroll={top => controller.current.scroll(`history:${historyScope.current}:${historyRef.current || ''}:${historyOrder.current}`, top)}/> : history.value && !history.loading && !history.error && !history.stale && <Empty title={data?.head.kind === 'unborn' ? '仓库尚无提交' : '当前范围内无提交'}/>}{history.value?.nextCursor && <button className="load-more" disabled={history.loading} onClick={() => { cancellation.current.resume('history'); void loadHistory(historyScope.current, history.value?.nextCursor); }}>继续加载 200 条 <span>↓</span></button>}</>}
+            {view === 'changes' ? <><div className="panel-heading"><h2>文件变化</h2><span>{total} 项比较</span></div>{data ? <ChangeList scope="changes" operations={operations} actions={<OperationSelection operations={operations}/>} disabled={operationBusy} changes={data.changes} filter={fileFilters.changes} onFilter={value => filterFiles('changes', value)} selected={selected} onSelect={(entry, activate) => selectChange(entry, currentOverview.current, activate)} scrollRef={fileScroll} onScroll={top => controller.current.scroll('changes', top)}/> : <p className="panel-wait">{overview.loading ? '正在读取工作区…' : '读取概览后显示文件。'}</p>}</> : <><div className="panel-heading"><h2>提交关系</h2><div className="history-heading-controls"><span className="history-range-label"><span>{historyScopeLabel(historyScope.current, historyRef.current)}</span></span>{historyScope.current === 'all' && <select aria-label="历史排序" className="history-order" value={allHistoryOrder.current} title="时间优先：优先展示较新的提交，保留父子关系。分支聚合：尽量连续展示同一条历史线。" onChange={event => { const order = event.target.value; if (order === 'date' || order === 'topo') sortHistory(order); }}><option value="date">时间优先</option><option value="topo">分支聚合</option></select>}</div></div><ReadFeedback state={history} hasValue={Boolean(history.value)} scope="提交历史" className="history-read-state" onRetry={() => retry('history')} onCancel={() => cancel('history')}/>{history.value?.shallow && <div className="history-boundary-note">浅克隆 · 历史不完整</div>}{history.value?.commits.length ? <HistoryGraph fullWidth={!historyDetailsOpen} commits={history.value.commits} selected={selectedCommit} headOid={history.value.headOid} onSelect={selectCommit} key={`${session.repository.worktreeId}:${historyScope.current}:${historyRef.current || ''}:${historyOrder.current}`} locateRequest={locateRequest} onLocateConsumed={version => setLocateRequest(current => current?.version === version ? undefined : current)} initialTop={controller.current.position(`history:${historyScope.current}:${historyRef.current || ''}:${historyOrder.current}`)} onScroll={top => controller.current.scroll(`history:${historyScope.current}:${historyRef.current || ''}:${historyOrder.current}`, top)}/> : history.value && !history.loading && !history.error && !history.stale && <Empty title={data?.head.kind === 'unborn' ? '仓库尚无提交' : '当前范围内无提交'}/>}{history.value?.nextCursor && <button className="load-more" disabled={history.loading} onClick={() => { cancellation.current.resume('history'); void loadHistory(historyScope.current, history.value?.nextCursor); }}>继续加载 200 条 <span>↓</span></button>}</>}
           </aside>
 
           {view === 'history' && historyDetailsOpen && historyPane.separator}
@@ -433,5 +461,6 @@ export function App({ initialSessionId, ticket }: { initialSessionId?: string; t
       {startup.loading && <Empty title="正在连接本地仓库…"/>}
       {!startup.loading && !session && <Empty symbol="⑂" title="尚未打开仓库"/>}
     </>}
+    <OperationDialog operations={operations}/>
   </div>;
 }

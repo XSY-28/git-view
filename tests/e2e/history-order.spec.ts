@@ -194,7 +194,7 @@ test('history ordering remains usable at a 390px viewport', async ({ page }, tes
 });
 
 test('wide merge graphs have a clipped graph column separate from descriptions at both scroll axes', async ({ page }, testInfo) => {
-  // A real 24-parent merge and eight commits per branch provide wide lanes and
+  // A real 64-parent merge and three commits per branch provide wide lanes and
   // enough rows to exercise virtualization far below the initial viewport.
   const wide = join(folder, 'wide-history'); await mkdir(wide);
   const wideGit = (args: string[], input?: string, timestamp?: number) => git(['-C', wide, ...args], input, timestamp);
@@ -203,12 +203,12 @@ test('wide merge graphs have a clipped graph column separate from descriptions a
   const tree = wideGit(['mktree'], `100644 blob ${blob}\tfile.txt\n`);
   const commit = (subject: string, offset: number, parents: string[] = []) => wideGit(['commit-tree', tree, ...parents.flatMap(parent => ['-p', parent]), '-m', subject], undefined, 1700000000 + offset);
   const root = commit('Wide history root', 0);
-  const parents = Array.from({ length: 24 }, (_, branch) => {
+  const parents = Array.from({ length: 64 }, (_, branch) => {
     let parent = root;
-    for (let step = 1; step <= 8; step++) parent = commit(`Parallel branch ${branch + 1} step ${step}`, branch * 10 + step, [parent]);
+    for (let step = 1; step <= 3; step++) parent = commit(`Parallel branch ${branch + 1} step ${step}`, branch * 10 + step, [parent]);
     return parent;
   });
-  const merge = commit('Merge 24 parallel branches', 1000, parents);
+  const merge = commit('Merge 64 parallel branches', 1000, parents);
   wideGit(['update-ref', 'refs/heads/main', merge]); wideGit(['reset', '--hard', 'main']);
   const before = await Promise.all(['HEAD', 'index'].map(name => readFile(join(wide, '.git', name))));
   const opened = await call({ action: 'open', path: wide });
@@ -219,8 +219,9 @@ test('wide merge graphs have a clipped graph column separate from descriptions a
   await page.getByRole('button', { name: /提交历史/ }).first().click();
   await expect(page.getByRole('button', { name: /提交历史/ }).first()).toContainText('194');
   const row = page.locator('.commit-row[data-row="0"]');
-  await expect(row.locator('.commit-subject')).toContainText('Merge 24 parallel branches');
-  await expect(row.locator('.commit-graph path')).toHaveCount(24);
+  await expect(row.locator('.commit-subject')).toContainText('Merge 64 parallel branches');
+  await expect(row.locator('.commit-graph path')).toHaveCount(64);
+  const deepTop = 100 * await row.evaluate(node => node.getBoundingClientRect().height);
   const scroll = page.locator('.history-scroll');
   const pan = page.locator('.history-graph-pan');
   await expect(row.locator('.history-graph-viewport')).toBeVisible();
@@ -303,7 +304,7 @@ test('wide merge graphs have a clipped graph column separate from descriptions a
   for (const width of [390, 1440]) {
     await page.setViewportSize({ width, height: width === 390 ? 844 : 960 });
     await expect.poll(() => pan.evaluate(node => node.scrollWidth > node.clientWidth)).toBe(true);
-    for (const top of [0, 6600]) {
+    for (const top of [0, deepTop]) {
       await scroll.evaluate((node, top) => { node.scrollTop = top; }, top);
       await expect.poll(() => scroll.evaluate(node => node.scrollTop)).toBe(top);
       await expect(pan).toBeInViewport();
@@ -339,7 +340,7 @@ test('wide merge graphs have a clipped graph column separate from descriptions a
   }
 
   await page.setViewportSize({ width: 390, height: 844 });
-  await scroll.evaluate(node => { node.scrollTop = 6600; });
+  await scroll.evaluate((node, top) => { node.scrollTop = top; }, deepTop);
   const deepRow = page.locator('.commit-row[data-row="100"]');
   const subject = await deepRow.locator('.commit-subject').innerText();
   await deepRow.locator('.commit-subject').click();

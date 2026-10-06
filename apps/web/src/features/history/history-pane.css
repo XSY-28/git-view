@@ -1,0 +1,45 @@
+.repository-main .history-workspace[data-details='closed'] > .detail-panel,
+.repository-main .history-workspace > .detail-panel[hidden] {
+  display: none;
+}
+
+.history-pane-resizer {
+  width: 6px;
+  min-width: 6px;
+  align-self: stretch;
+  cursor: col-resize;
+  touch-action: none;
+  background: var(--line-soft);
+  outline-offset: -2px;
+}
+
+.history-pane-resizer:hover,
+.history-pane-resizer:focus-visible,
+.history-pane-resizer[data-dragging='true'] {
+  background: var(--accent-soft);
+}
+
+.history-workspace:has(> .history-pane-resizer[data-dragging='true']) {
+  cursor: col-resize;
+  user-select: none;
+}
+
+@media (min-width: 721px) {
+  .repository-main .history-workspace[data-details='closed'] {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .repository-main .history-workspace[data-details='open'] {
+    grid-template-columns: minmax(0, 1fr) 6px var(--history-detail-width, 420px);
+  }
+
+  .repository-main .history-workspace[data-details] > .list-panel {
+    border-right: 0;
+  }
+}
+
+@media (max-width: 720px) {
+  .history-pane-resizer {
+    display: none;
+  }
+}

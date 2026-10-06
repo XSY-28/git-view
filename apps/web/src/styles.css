@@ -838,7 +838,7 @@ code {
   display: flex;
   flex-direction: column;
   min-width: 0;
-  gap: 5px;
+  gap: 3px;
   flex: 1
 }
 
@@ -862,20 +862,12 @@ code {
   white-space: nowrap
 }
 
-.commit-meta code {
-  font-size: 11px;
-  color: var(--muted);
-  flex: none
-}
-
 .commit-author {
   min-width: 0;
+  max-width: 45%;
+  flex-shrink: 0;
   overflow: hidden;
   text-overflow: ellipsis
-}
-
-.commit-date {
-  flex: none
 }
 
 .commit-refs {
@@ -883,8 +875,16 @@ code {
   gap: 4px;
   overflow: hidden;
   white-space: nowrap;
-  margin-top: -2px
+  min-width: 0
 }
+
+.commit-refs .ref-label { flex-shrink: 0; max-width: 160px; }
+.commit-meta .boundary-label { flex-shrink: 0; }
+.history-detail-toolbar { display: flex; align-items: center; justify-content: space-between; min-height: 36px; padding: 4px 14px; border-bottom: 1px solid var(--line-soft); color: var(--muted); font-size: 11px; }
+.history-detail-toolbar button { padding: 4px 8px; border-radius: 3px; color: var(--accent); }
+.history-detail-toolbar button:hover { background: var(--hover); }
+.view-tabs>button.history-open-details { margin-left: auto; padding: 0 8px; color: var(--accent); font-size: 12px; }
+@media(max-width:720px) { .view-tabs>button.history-open-details { display: none; } }
 
 .ref-label {
   font-size: 10px;

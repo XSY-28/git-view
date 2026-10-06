@@ -1,0 +1,52 @@
+{
+  "schemaVersion": 1,
+  "platform": "darwin",
+  "arch": "arm64",
+  "installedFrom": "~/Applications/Git View.app",
+  "checks": {
+    "packagedNodeLicensePresent": true,
+    "resourceChecksumsMatch": true,
+    "packagedInspectWithoutExternalNode": true,
+    "unicodeAndSpaces": true,
+    "repositoryFingerprintUnchanged": true,
+    "invalidRepositoryIsError": true,
+    "packagedStdioAndEofCleanup": true
+  },
+  "gui": "unverified",
+  "signedOrPublished": false,
+  "buildInfo": {
+    "schemaVersion": 1,
+    "hostVersion": "0.2.0",
+    "coreVersion": "0.1.0",
+    "nodeVersion": "v24.19.0",
+    "platform": "darwin",
+    "arch": "arm64",
+    "builtAt": "2026-10-06T08:36:42.803Z",
+    "sourceRevision": null,
+    "releaseRef": null,
+    "dependencies": {
+      "react": "19.3.0",
+      "react-dom": "19.3.0",
+      "zod": "4.6.5",
+      "@playwright/test": "1.63.0",
+      "@tauri-apps/cli": "2.12.1",
+      "@types/node": "24.10.1",
+      "@types/react": "19.2.2",
+      "@types/react-dom": "19.2.2",
+      "esbuild": "0.28.2",
+      "typescript": "5.9.3",
+      "vite": "8.3.2",
+      "vitest": "5.0.3"
+    },
+    "cargoLockSha256": "d53fc192359e3973529f8a0d9d585a020d423915ef94c4043fcfc21143e14f7a",
+    "signing": "unsigned-test-build",
+    "files": {
+      "node": "1f08f0e5b8d9a0136c6219f4cea4d3b4fb8ffa4d96e0ff64869ce0dda6dd6a35",
+      "stdio.mjs": "a171bc6e5883c605175d527b9962ff4c094aad03d78f6e5841012f2f45f850ea",
+      "inspect.mjs": "b1e328c691533658f58a98a6c5fc25e2b682a19beb6d8dc8971b6c766c08ade4"
+    }
+  },
+  "artifactSha256": "1b979c045d6a2acb570496cdbaac85801d870ff663a275d45f97aec36361c41e",
+  "nativeExecutableSha256": "e900431f5d8637b8f4e27a88fc3f494ea22ece65ae9c124dfb04758db840f4c6",
+  "pathNote": "Local username and absolute home path redacted. GUI checks are recorded separately in 2026-10-06-history-reading.md."
+}

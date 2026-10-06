@@ -14,6 +14,7 @@ import { RepositorySidebar } from './features/navigation/RepositorySidebar';
 import { RepositorySwitcher } from './features/navigation/RepositorySwitcher';
 import { historyScopeLabel } from './features/navigation/history-scope';
 import { CommitSummary } from './features/history/CommitSummary';
+import { useHistoryPaneLayout } from './features/history/useHistoryPaneLayout';
 import { RepositoryController, RefreshQueue, type HistoryScope, type MainView } from './state/repository-controller';
 
 type Resource<T> = ReadState & { value?: T; stamp?: ReadStamp };
@@ -61,6 +62,8 @@ export function App({ initialSessionId, ticket }: { initialSessionId?: string; t
   const locateVersion = useRef(0);
   const [locateRequest, setLocateRequest] = useState<LocateRequest>();
   const [mobilePanel, setMobilePanel] = useState<'navigation' | 'list' | 'diff'>('list');
+  const [historyDetailsOpen, setHistoryDetailsOpen] = useState(false);
+  const historyPane = useHistoryPaneLayout();
   const [repositoryActivity, setRepositoryActivity] = useState<'picking' | 'opening' | null>(null);
   const [openError, setOpenError] = useState('');
   const [watchError, setWatchError] = useState('');
@@ -144,10 +147,18 @@ export function App({ initialSessionId, ticket }: { initialSessionId?: string; t
     if (entry && !matchesFileFilter(entry, value)) clearFileSelection(scope);
   }
   function selectCommit(node: CommitNode, activate = true) {
-    commitSelection.current = node.oid; setSelectedCommit(node.oid); if (activate) setMobilePanel('diff');
+    commitSelection.current = node.oid; setSelectedCommit(node.oid); if (activate) { setHistoryDetailsOpen(true); setMobilePanel('diff'); }
     gate.current.cancel('commit-diff'); setCommitDiff(empty()); setSelectedCommitFile(undefined); commitFileSelection.current = undefined;
     cancellation.current.resume('commit');
     loadSelectedCommit(false);
+  }
+  function closeHistoryDetails() {
+    setHistoryDetailsOpen(false); setMobilePanel('list');
+    requestAnimationFrame(() => {
+      const workspace = historyPane.workspaceRef.current;
+      const target = workspace?.querySelector<HTMLElement>('.commit-row[aria-pressed="true"]') || workspace?.querySelector<HTMLElement>('.history-scroll');
+      target?.focus({ preventScroll: true });
+    });
   }
   function loadSelectedCommit(keep: boolean) {
     const oid = commitSelection.current; if (!oid) return;
@@ -167,7 +178,7 @@ export function App({ initialSessionId, ticket }: { initialSessionId?: string; t
     const scopeChanged = scope !== historyScope.current || selectedRef !== historyRef.current || order !== historyOrder.current;
     historyScope.current = scope; historyRef.current = selectedRef; historyOrder.current = order;
     if (scope === 'all') allHistoryOrder.current = order;
-    if (scopeChanged) { cancellation.current.resume('commit'); setLocateRequest(undefined); gate.current.cancel('commit'); gate.current.cancel('commit-diff'); commitSelection.current = undefined; commitFileSelection.current = undefined; setSelectedCommit(undefined); setSelectedCommitFile(undefined); setCommit(empty()); setCommitDiff(empty()); currentHistory.current = undefined; }
+    if (scopeChanged) { setHistoryDetailsOpen(false); cancellation.current.resume('commit'); setLocateRequest(undefined); gate.current.cancel('commit'); gate.current.cancel('commit-diff'); commitSelection.current = undefined; commitFileSelection.current = undefined; setSelectedCommit(undefined); setSelectedCommitFile(undefined); setCommit(empty()); setCommitDiff(empty()); currentHistory.current = undefined; }
     const previous = currentHistory.current;
     const keep = !scopeChanged && Boolean(previous);
     // Refresh the already loaded window before replacing it; a first-page swap clamps scroll.
@@ -222,6 +233,7 @@ export function App({ initialSessionId, ticket }: { initialSessionId?: string; t
   function filterHistory(scope: HistoryScope, ref?: string) { cancellation.current.resume('history'); setView('history'); setMobilePanel('list'); loadHistory(scope, undefined, false, ref); }
   function sortHistory(order: HistoryOrder) { cancellation.current.resume('history'); void loadHistory('all', undefined, false, undefined, order); }
   function adoptSession(next: RepositorySession) {
+    setHistoryDetailsOpen(false);
     refreshQueue.current.reset(); cancellation.current.reset(); pendingRefresh.current = false; setLocateRequest(undefined); currentSession.current = next; setSession(next); currentOverview.current = undefined; currentHistory.current = undefined;
     gate.current.setContext(next.sessionId, next.generation);
     const memory = controller.current.activate(next.repository.worktreeId);
@@ -349,6 +361,15 @@ export function App({ initialSessionId, ticket }: { initialSessionId?: string; t
 
   const data = overview.value;
   const opening = repositoryActivity !== null;
+  useEffect(() => {
+    if (view !== 'history' || !historyDetailsOpen || showRepository || opening) return;
+    const closeOnEscape = (event: KeyboardEvent) => {
+      // Let the separator cancel an active drag and dialogs consume Escape first.
+      if (event.key === 'Escape' && !event.defaultPrevented) { event.preventDefault(); closeHistoryDetails(); }
+    };
+    window.addEventListener('keydown', closeOnEscape);
+    return () => window.removeEventListener('keydown', closeOnEscape);
+  }, [view, historyDetailsOpen, showRepository, opening]);
   const branch = data?.head.kind === 'detached' ? 'detached HEAD' : data?.head.branch;
   const headOid = data && data.head.kind !== 'unborn' ? data.head.oid : undefined;
   const headInHistory = Boolean(headOid && history.value?.commits.some(node => node.oid === headOid));
@@ -390,15 +411,17 @@ export function App({ initialSessionId, ticket }: { initialSessionId?: string; t
         {data && (data.operation.length > 0 || !data.complete || data.changes.conflicts.length > 0) && <div className="operation-banner" role="status">{data.operation.length > 0 && <strong>进行中的操作：{data.operation.join('、')}。 </strong>}{data.changes.conflicts.length > 0 && <strong>{data.changes.conflicts.length} 个未解决冲突。 </strong>}{!data.complete && <strong>当前观测不完整。 </strong>}{data.warnings.join(' ')}</div>}
         {watchError && <div className="operation-banner" role="alert">{watchError}</div>}
         {info && <div className="feedback-toast" role="status"><span>{info.message}</span></div>}
-        <nav className="view-tabs" aria-label="主视图"><button className={view === 'changes' ? 'active' : ''} onClick={() => { setView('changes'); setMobilePanel('list'); }}>当前改动 <span>{total}</span></button><button className={view === 'history' ? 'active' : ''} onClick={() => { setView('history'); setMobilePanel('list'); if (!history.value && !history.loading) retry('history'); }}>提交历史 <span>{history.value?.commits.length || '·'}</span></button>{view === 'history' && <button className="locate-button" disabled={!headOid || history.loading} title={headInHistory ? '选中并定位当前 HEAD' : '查看从当前 HEAD 出发的历史'} onClick={locateHead}>{headInHistory ? '定位 HEAD' : '查看 HEAD 历史'}</button>}</nav>
-        <nav className="mobile-tabs" aria-label="窄窗口面板"><button className={mobilePanel === 'navigation' ? 'active' : ''} onClick={() => setMobilePanel('navigation')}>历史范围</button><button className={mobilePanel === 'list' ? 'active' : ''} onClick={() => setMobilePanel('list')}>{view === 'changes' ? '文件列表' : '提交列表'}</button><button className={mobilePanel === 'diff' ? 'active' : ''} onClick={() => setMobilePanel('diff')}>查看详情</button></nav>
+        <nav className="view-tabs" aria-label="主视图"><button className={view === 'changes' ? 'active' : ''} onClick={() => { setView('changes'); setMobilePanel('list'); }}>当前改动 <span>{total}</span></button><button className={view === 'history' ? 'active' : ''} onClick={() => { setView('history'); setMobilePanel('list'); if (!history.value && !history.loading) retry('history'); }}>提交历史 <span>{history.value?.commits.length || '·'}</span></button>{view === 'history' && <button className="locate-button" disabled={!headOid || history.loading} title={headInHistory ? '选中并定位当前 HEAD' : '查看从当前 HEAD 出发的历史'} onClick={locateHead}>{headInHistory ? '定位 HEAD' : '查看 HEAD 历史'}</button>}{view === 'history' && selectedCommit && !historyDetailsOpen && <button className="history-open-details" onClick={() => { setHistoryDetailsOpen(true); setMobilePanel('diff'); }}>查看提交详情</button>}</nav>
+        <nav className="mobile-tabs" aria-label="窄窗口面板"><button className={mobilePanel === 'navigation' ? 'active' : ''} onClick={() => setMobilePanel('navigation')}>历史范围</button><button className={mobilePanel === 'list' ? 'active' : ''} onClick={() => setMobilePanel('list')}>{view === 'changes' ? '文件列表' : '提交列表'}</button><button className={mobilePanel === 'diff' ? 'active' : ''} disabled={view === 'history' && !selectedCommit} onClick={() => { setMobilePanel('diff'); if (view === 'history') setHistoryDetailsOpen(true); }}>查看详情</button></nav>
 
-        <main className={`workspace ${view === 'history' ? 'history-workspace' : ''} mobile-${mobilePanel}`}>
+        <main ref={historyPane.workspaceRef} style={view === 'history' ? historyPane.workspaceStyle : undefined} data-details={historyDetailsOpen ? 'open' : 'closed'} className={`workspace ${view === 'history' ? 'history-workspace' : ''} mobile-${mobilePanel}`}>
           <aside className="list-panel">
-            {view === 'changes' ? <><div className="panel-heading"><h2>文件变化</h2><span>{total} 项比较</span></div>{data ? <ChangeList scope="changes" changes={data.changes} filter={fileFilters.changes} onFilter={value => filterFiles('changes', value)} selected={selected} onSelect={(entry, activate) => selectChange(entry, currentOverview.current, activate)} scrollRef={fileScroll} onScroll={top => controller.current.scroll('changes', top)}/> : <p className="panel-wait">{overview.loading ? '正在读取工作区…' : '读取概览后显示文件。'}</p>}</> : <><div className="panel-heading"><h2>提交关系</h2><div className="history-heading-controls"><span className="history-range-label"><span>{historyScopeLabel(historyScope.current, historyRef.current)}</span></span>{historyScope.current === 'all' && <select aria-label="历史排序" className="history-order" value={allHistoryOrder.current} title="时间优先：优先展示较新的提交，保留父子关系。分支聚合：尽量连续展示同一条历史线。" onChange={event => { const order = event.target.value; if (order === 'date' || order === 'topo') sortHistory(order); }}><option value="date">时间优先</option><option value="topo">分支聚合</option></select>}</div></div><ReadFeedback state={history} hasValue={Boolean(history.value)} scope="提交历史" className="history-read-state" onRetry={() => retry('history')} onCancel={() => cancel('history')}/>{history.value?.shallow && <div className="history-boundary-note">浅克隆 · 历史不完整</div>}{history.value?.commits.length ? <HistoryGraph commits={history.value.commits} selected={selectedCommit} headOid={history.value.headOid} onSelect={selectCommit} key={`${session.repository.worktreeId}:${historyScope.current}:${historyRef.current || ''}:${historyOrder.current}`} locateRequest={locateRequest} onLocateConsumed={version => setLocateRequest(current => current?.version === version ? undefined : current)} initialTop={controller.current.position(`history:${historyScope.current}:${historyRef.current || ''}:${historyOrder.current}`)} onScroll={top => controller.current.scroll(`history:${historyScope.current}:${historyRef.current || ''}:${historyOrder.current}`, top)}/> : history.value && !history.loading && !history.error && !history.stale && <Empty title={data?.head.kind === 'unborn' ? '仓库尚无提交' : '当前范围内无提交'}/>}{history.value?.nextCursor && <button className="load-more" disabled={history.loading} onClick={() => { cancellation.current.resume('history'); void loadHistory(historyScope.current, history.value?.nextCursor); }}>继续加载 200 条 <span>↓</span></button>}</>}
+            {view === 'changes' ? <><div className="panel-heading"><h2>文件变化</h2><span>{total} 项比较</span></div>{data ? <ChangeList scope="changes" changes={data.changes} filter={fileFilters.changes} onFilter={value => filterFiles('changes', value)} selected={selected} onSelect={(entry, activate) => selectChange(entry, currentOverview.current, activate)} scrollRef={fileScroll} onScroll={top => controller.current.scroll('changes', top)}/> : <p className="panel-wait">{overview.loading ? '正在读取工作区…' : '读取概览后显示文件。'}</p>}</> : <><div className="panel-heading"><h2>提交关系</h2><div className="history-heading-controls"><span className="history-range-label"><span>{historyScopeLabel(historyScope.current, historyRef.current)}</span></span>{historyScope.current === 'all' && <select aria-label="历史排序" className="history-order" value={allHistoryOrder.current} title="时间优先：优先展示较新的提交，保留父子关系。分支聚合：尽量连续展示同一条历史线。" onChange={event => { const order = event.target.value; if (order === 'date' || order === 'topo') sortHistory(order); }}><option value="date">时间优先</option><option value="topo">分支聚合</option></select>}</div></div><ReadFeedback state={history} hasValue={Boolean(history.value)} scope="提交历史" className="history-read-state" onRetry={() => retry('history')} onCancel={() => cancel('history')}/>{history.value?.shallow && <div className="history-boundary-note">浅克隆 · 历史不完整</div>}{history.value?.commits.length ? <HistoryGraph fullWidth={!historyDetailsOpen} commits={history.value.commits} selected={selectedCommit} headOid={history.value.headOid} onSelect={selectCommit} key={`${session.repository.worktreeId}:${historyScope.current}:${historyRef.current || ''}:${historyOrder.current}`} locateRequest={locateRequest} onLocateConsumed={version => setLocateRequest(current => current?.version === version ? undefined : current)} initialTop={controller.current.position(`history:${historyScope.current}:${historyRef.current || ''}:${historyOrder.current}`)} onScroll={top => controller.current.scroll(`history:${historyScope.current}:${historyRef.current || ''}:${historyOrder.current}`, top)}/> : history.value && !history.loading && !history.error && !history.stale && <Empty title={data?.head.kind === 'unborn' ? '仓库尚无提交' : '当前范围内无提交'}/>}{history.value?.nextCursor && <button className="load-more" disabled={history.loading} onClick={() => { cancellation.current.resume('history'); void loadHistory(historyScope.current, history.value?.nextCursor); }}>继续加载 200 条 <span>↓</span></button>}</>}
           </aside>
 
-          <section className="detail-panel" aria-label="所选内容详情">
+          {view === 'history' && historyDetailsOpen && historyPane.separator}
+          <section className="detail-panel" aria-label="所选内容详情" hidden={view === 'history' && !historyDetailsOpen}>
+            {view === 'history' && <div className="history-detail-toolbar"><span>提交详情</span><button aria-label="关闭提交详情" title="关闭提交详情（Esc）" onClick={closeHistoryDetails}><span aria-hidden="true">×</span> 关闭</button></div>}
             {view === 'history' && <>{commit.value ? <CommitSummary key={commit.value.commit.oid} detail={commit.value} onCopy={value => copyText(value, '提交 ID')} status={commitFeedback}><ChangeList scope="history" entries={commit.value.changes} filter={fileFilters.history} onFilter={value => filterFiles('history', value)} selected={selectedCommitFile} onSelect={entry => selectCommitFile(entry)}/></CommitSummary> : selectedCommit && commitFeedback}</>}
 
             <ReadFeedback state={diffFeedback} hasValue={Boolean(activeDiff.value)} scope="文件差异" className="diff-read-state" onRetry={retryDiff} onCancel={() => cancel(view === 'changes' ? 'diff' : 'commit-diff')}/>

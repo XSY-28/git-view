@@ -3,12 +3,12 @@ import { layoutHistory } from '@git-view/graph-layout';
 import type { CommitNode } from '@git-view/contracts';
 import { listNavigationTarget } from '../navigation/list-navigation';
 
-const ROW = 66; const LANE = 17;
+const ROW = 56; const LANE = 17;
 const LANE_COLORS = ['var(--graph-1)', 'var(--graph-2)', 'var(--graph-3)', 'var(--graph-4)', 'var(--graph-5)'];
 
 export interface LocateRequest { version: number; targetOid: string }
 
-export function HistoryGraph({ commits, selected, headOid, onSelect, locateRequest, onLocateConsumed, initialTop = 0, onScroll }: { commits: CommitNode[]; selected?: string; headOid?: string; onSelect: (commit: CommitNode, activate?: boolean) => void; locateRequest?: LocateRequest; onLocateConsumed: (version: number) => void; initialTop?: number; onScroll?: (top: number) => void }) {
+export function HistoryGraph({ commits, selected, headOid, onSelect, locateRequest, onLocateConsumed, initialTop = 0, onScroll, fullWidth = false }: { fullWidth?: boolean; commits: CommitNode[]; selected?: string; headOid?: string; onSelect: (commit: CommitNode, activate?: boolean) => void; locateRequest?: LocateRequest; onLocateConsumed: (version: number) => void; initialTop?: number; onScroll?: (top: number) => void }) {
   const layout = useMemo(() => layoutHistory(commits), [commits]);
   const scroll = useRef<HTMLDivElement>(null);
   const pan = useRef<HTMLDivElement>(null);
@@ -19,7 +19,11 @@ export function HistoryGraph({ commits, selected, headOid, onSelect, locateReque
   const end = Math.min(commits.length, Math.ceil((top + height) / ROW) + 5);
   const graphWidth = Math.max(44, layout.laneCount * LANE + 20);
   // Clip the graph within its own column; descriptions never sit on top of lanes.
-  const graphColumnWidth = Math.min(graphWidth, Math.max(44, Math.min(width * .4, width - 220)));
+  // With details closed, reserve a compact reading column and give wide graphs
+  // the remaining space. Small graphs still stop at their natural width.
+  const descriptionWidth = Math.min(360, Math.max(220, width * .35));
+  const availableGraphWidth = fullWidth ? width - descriptionWidth : Math.min(width * .4, width - 220);
+  const graphColumnWidth = Math.min(graphWidth, Math.max(44, availableGraphWidth));
   const maxPan = Math.max(0, graphWidth - graphColumnWidth);
   function panTo(value: number) {
     const next = Math.max(0, Math.min(maxPan, value));
@@ -62,11 +66,11 @@ export function HistoryGraph({ commits, selected, headOid, onSelect, locateReque
     requestAnimationFrame(() => scroll.current?.querySelector<HTMLButtonElement>(`[data-row="${target}"]`)?.focus({ preventScroll: true }));
   }
   return <div className="history-chart">
-    <div ref={scroll} className="history-scroll" onScroll={event => { setTop(event.currentTarget.scrollTop); onScroll?.(event.currentTarget.scrollTop); }} aria-label="提交历史，方向键切换提交">
+    <div ref={scroll} className="history-scroll" tabIndex={-1} onScroll={event => { setTop(event.currentTarget.scrollTop); onScroll?.(event.currentTarget.scrollTop); }} aria-label="提交历史，方向键切换提交">
     <div className="history-virtual" style={{ height: commits.length * ROW + (layout.continuations.length ? 36 : 0) }}>
       {commits.slice(start, end).map((commit, offset) => {
         const index = start + offset; const row = layout.rows[index]!;
-        return <button key={commit.oid} data-row={index} className={`commit-row ${selected === commit.oid ? 'selected' : ''}`} style={{ top: index * ROW, height: ROW }} onClick={() => onSelect(commit)} onKeyDown={event => keyboard(event, index)} aria-pressed={selected === commit.oid} title={`${commit.subject}\n${commit.oid}`}>
+        return <button key={commit.oid} data-row={index} className={`commit-row ${selected === commit.oid ? 'selected' : ''}`} style={{ top: index * ROW, height: ROW }} onClick={() => onSelect(commit)} onKeyDown={event => keyboard(event, index)} aria-pressed={selected === commit.oid} title={`${commit.subject}\n${commit.author} · ${new Date(commit.authoredAt).toLocaleString('zh-CN')}\n${commit.oid}${commit.refs.length ? `\n${commit.refs.join(', ')}` : ''}`}>
           <span className="history-graph-viewport" style={{ width: graphColumnWidth }} onWheel={event => {
             const delta = event.shiftKey && !event.deltaX ? event.deltaY : event.deltaX;
             if (delta) panTo(left + delta);
@@ -81,7 +85,7 @@ export function HistoryGraph({ commits, selected, headOid, onSelect, locateReque
             {row.boundary ? <rect x={11 + row.lane * LANE} y={ROW / 2 - 4} width="8" height="8" fill="var(--paper)" stroke={LANE_COLORS[row.lane % LANE_COLORS.length]} strokeWidth="2" /> : <circle cx={15 + row.lane * LANE} cy={ROW / 2} r="4.5" fill={selected === commit.oid ? LANE_COLORS[row.lane % LANE_COLORS.length] : 'var(--paper)'} stroke={LANE_COLORS[row.lane % LANE_COLORS.length]} strokeWidth="2" />}
           </svg>
           </span>
-          <span className="commit-copy"><span className="commit-subject">{headOid === commit.oid && <span className="ref-label head-label">HEAD</span>}{commit.subject || '（无提交说明）'}</span><span className="commit-meta"><code>{commit.oid.slice(0, 8)}</code><span className="commit-author">{commit.author}</span><span className="commit-date">{new Date(commit.authoredAt).toLocaleDateString('zh-CN')}</span>{commit.boundary && <span className="boundary-label">浅克隆边界</span>}</span>{commit.refs.length > 0 && <span className="commit-refs">{commit.refs.map(ref => <span className="ref-label" key={ref}>{ref}</span>)}</span>}</span>
+          <span className="commit-copy"><span className="commit-subject">{headOid === commit.oid && <span className="ref-label head-label">HEAD</span>}{commit.subject || '（无提交说明）'}</span><span className="commit-meta"><span className="commit-author">{commit.author}</span>{commit.boundary && <span className="boundary-label">浅克隆边界</span>}{commit.refs.length > 0 && <span className="commit-refs">{commit.refs.map(ref => <span className="ref-label" key={ref} title={ref}>{ref}</span>)}</span>}</span></span>
         </button>;
       })}
       {layout.continuations.length > 0 && <div className="graph-continuation" style={{ top: commits.length * ROW }}><span aria-hidden="true">┆</span> 父提交尚未加载 · 继续加载可展开关系</div>}

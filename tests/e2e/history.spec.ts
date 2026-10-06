@@ -46,6 +46,8 @@ test('history defaults to HEAD; locating it outside all refs and virtual paginat
   await expect(page.getByRole('button', { name: '当前 HEAD', exact: true })).toHaveAttribute('aria-pressed', 'true');
   await expect(page.locator('.commit-row.selected')).toContainText('历史提交 1');
   await expect(page.locator('.commit-row.selected .head-label')).toHaveText('HEAD');
+  // Locating a commit preserves the closed overview; inspecting it is explicit.
+  await page.locator('.commit-row.selected').click();
   await expect(page.locator('.commit-detail')).toContainText('相对空树');
   await expect(page.getByRole('button', { name: /定位 HEAD/ })).toBeVisible();
   await expect(page.locator('.head-line strong')).toHaveText('main');
@@ -108,8 +110,9 @@ test('focus refresh retains all loaded history pages and rejects a delayed page 
   await page.getByRole('button', { name: /继续加载 200 条/ }).click();
   await expect(historyTab).toContainText('231');
   const scroll = page.locator('.history-scroll');
-  await scroll.evaluate(node => { node.scrollTop = 14000; });
-  await expect.poll(() => scroll.evaluate(node => node.scrollTop)).toBe(14000);
+  const deepTop = 200 * await page.locator('.commit-row').first().evaluate(node => node.getBoundingClientRect().height);
+  await scroll.evaluate((node, top) => { node.scrollTop = top; }, deepTop);
+  await expect.poll(() => scroll.evaluate(node => node.scrollTop)).toBe(deepTop);
 
   let release!: () => void;
   let hold = new Promise<void>(resolve => { release = resolve; });
@@ -136,11 +139,11 @@ test('focus refresh retains all loaded history pages and rejects a delayed page 
     await expect(historyTab).toContainText('231');
     expect(secondPagesHeld).toBe(1);
     await expect(page.locator('.history-read-state')).toHaveAttribute('data-phase', 'loading');
-    expect(await scroll.evaluate(node => node.scrollTop)).toBe(14000);
+    expect(await scroll.evaluate(node => node.scrollTop)).toBe(deepTop);
     release();
     await expect(page.locator('.history-read-state')).toHaveAttribute('data-phase', 'idle');
     await expect(historyTab).toContainText('231');
-    expect(await scroll.evaluate(node => node.scrollTop)).toBe(14000);
+    expect(await scroll.evaluate(node => node.scrollTop)).toBe(deepTop);
 
     hold = new Promise<void>(resolve => { release = resolve; });
     await page.evaluate(() => window.dispatchEvent(new Event('focus')));

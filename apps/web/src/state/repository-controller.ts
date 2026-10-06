@@ -1,8 +1,9 @@
 import { z } from 'zod';
 import { REFRESH_TIMING } from '../../../shared/transport';
-import type { ChangeEntry, HistoryOrder } from '@git-view/contracts';
+import type { ChangeEntry, ComparisonOptions, HistoryOrder } from '@git-view/contracts';
 
-export type MainView = 'changes' | 'history';
+export type FileListScope = 'changes' | 'history';
+export type MainView = FileListScope | 'comparison';
 export type HistoryScope = 'all' | 'head' | 'ref';
 export type DiffMode = 'unified' | 'split';
 const STORAGE_KEY = 'git-view.preferences.v1';
@@ -24,7 +25,7 @@ export function rememberPosition(key: string, top: number) {
 }
 export interface ViewMemory {
   view: MainView; scope: HistoryScope; ref?: string; allHistoryOrder: HistoryOrder; selection?: ChangeEntry | null; commit?: string; commitFile?: ChangeEntry | null;
-  scroll: Record<string, number>; search: string; fileFilters: Record<MainView, string>;
+  scroll: Record<string, number>; search: string; fileFilters: Record<FileListScope, string>; comparison?: ComparisonOptions;
 }
 /** UI state belongs to a canonical worktree, never to a shared common Git directory. */
 export class RepositoryController {
@@ -41,14 +42,15 @@ export class RepositoryController {
   save(value: Omit<ViewMemory, 'scroll' | 'search' | 'fileFilters'>) {
     if (!this.active) return;
     const previous = this.memories.get(this.active)!;
-    this.memories.set(this.active, { ...value, scroll: previous.scroll, search: previous.search, fileFilters: previous.fileFilters });
+    this.memories.set(this.active, { ...previous, ...value, scroll: previous.scroll, search: previous.search, fileFilters: previous.fileFilters });
   }
   search(value?: string): string { const memory = this.active && this.memories.get(this.active); if (!memory) return ''; if (value !== undefined) memory.search = value; return memory.search; }
-  fileFilter(view: MainView, value?: string): string { const memory = this.active && this.memories.get(this.active); if (!memory) return ''; if (value !== undefined) memory.fileFilters[view] = value; return memory.fileFilters[view]; }
-  clearSelection(view: MainView) {
+  fileFilter(view: FileListScope, value?: string): string { const memory = this.active && this.memories.get(this.active); if (!memory) return ''; if (value !== undefined) memory.fileFilters[view] = value; return memory.fileFilters[view]; }
+  clearSelection(view: FileListScope) {
     const memory = this.active && this.memories.get(this.active);
     if (memory) memory[view === 'changes' ? 'selection' : 'commitFile'] = null;
   }
+  comparison(options?: ComparisonOptions): ComparisonOptions | undefined { const memory = this.active && this.memories.get(this.active); if (!memory) return; if (options) memory.comparison = options; return memory.comparison; }
   position(key: string) { return this.active ? this.memories.get(this.active)?.scroll[key] || 0 : 0; }
   scroll(key: string, top: number) { if (this.active) this.memories.get(this.active)!.scroll[key] = top; }
 }

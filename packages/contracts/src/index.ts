@@ -6,6 +6,8 @@ import { appErrorSchema, overviewSchema, sessionSchema, diffSchema, historySchem
 export * from './models';
 export * from './operations';
 export * from './preferences';
+export * from './comparison';
+import { comparisonOptionsSchema, comparisonModeSchema, comparisonSideSchema, revisionComparisonSchema, comparisonCommitsSchema, type ComparisonOptions, type ComparisonPageOptions, type RevisionComparison, type ComparisonCommits, type ComparisonMode } from './comparison';
 import { languageSchema, preferencesSchema } from './preferences';
 
 // Transport inputs are validated at the HTTP boundary; arbitrary Git commands are never accepted.
@@ -28,12 +30,15 @@ export const requestSchema = z.discriminatedUnion('action', [
   }),
   z.object({ ...sessionRequest, action: z.literal('commit'), oid: z.string() }),
   z.object({ ...sessionRequest, action: z.literal('commit-change'), oid: z.string(), entryId: z.string() }),
+  z.object({ ...sessionRequest, action: z.literal('compare'), ...comparisonOptionsSchema.shape }).strict(),
+  z.object({ ...sessionRequest, action: z.literal('comparison-commits'), comparisonId: z.string().uuid(), side: comparisonSideSchema, cursor: z.string().uuid().optional() }).strict(),
+  z.object({ ...sessionRequest, action: z.literal('comparison-change'), comparisonId: z.string().uuid(), mode: comparisonModeSchema, entryId: z.string() }).strict(),
 ]);
 export type ApiRequest = z.infer<typeof requestSchema>;
 export function queryKey(request: ApiRequest, worktreeId: string): string {
-  return JSON.stringify([worktreeId, request.action, 'entryId' in request ? request.entryId : null, 'oid' in request ? request.oid : null, 'scope' in request ? request.scope : null, 'ref' in request ? request.ref ?? null : null, 'cursor' in request ? request.cursor : null, request.action === 'history' ? resolveHistoryOrder(request) : null]);
+  return JSON.stringify([worktreeId, request.action, 'entryId' in request ? request.entryId : null, 'oid' in request ? request.oid : null, 'scope' in request ? request.scope : null, 'ref' in request ? request.ref ?? null : null, 'cursor' in request ? request.cursor : null, request.action === 'history' ? resolveHistoryOrder(request) : null, ...('comparisonId' in request ? [request.comparisonId, 'side' in request ? request.side : null, 'mode' in request ? request.mode : null] : request.action === 'compare' ? [request.a, request.b] : [])]);
 }
-export const resultDataSchema = z.union([overviewSchema, sessionSchema, diffSchema, historySchema, navigationSchema, commitDetailSchema, folderChoiceSchema, preferencesSchema, z.array(recentSchema), z.object({ ticket: z.string() }), z.object({ alive: z.boolean() })]);
+export const resultDataSchema = z.union([overviewSchema, sessionSchema, diffSchema, historySchema, navigationSchema, commitDetailSchema, revisionComparisonSchema, comparisonCommitsSchema, folderChoiceSchema, preferencesSchema, z.array(recentSchema), z.object({ ticket: z.string() }), z.object({ alive: z.boolean() })]);
 export const responseSchema = z.discriminatedUnion('ok', [
   z.object({ schemaVersion: z.literal(1), ok: z.literal(true), data: resultDataSchema, stamp: stampSchema.optional() }),
   z.object({ schemaVersion: z.literal(1), ok: z.literal(false), error: appErrorSchema, stamp: stampSchema.optional(), requestId: z.string(), finishedAt: z.string() }),
@@ -48,4 +53,7 @@ export interface GitAdapter {
   listHistory(repository: RepositoryIdentity, options: HistoryOptions, signal?: AbortSignal): Promise<History>;
   readCommit(repository: RepositoryIdentity, oid: string, signal?: AbortSignal): Promise<CommitDetail>;
   readCommitChange(repository: RepositoryIdentity, oid: string, entry: ChangeEntry, signal?: AbortSignal): Promise<Diff>;
+  compareRevisions(repository: RepositoryIdentity, options: ComparisonOptions, signal?: AbortSignal): Promise<RevisionComparison>;
+  listComparisonCommits(repository: RepositoryIdentity, comparison: RevisionComparison, options: ComparisonPageOptions, signal?: AbortSignal): Promise<ComparisonCommits>;
+  readComparisonChange(repository: RepositoryIdentity, comparison: RevisionComparison, mode: ComparisonMode, entry: ChangeEntry, signal?: AbortSignal): Promise<Diff>;
 }

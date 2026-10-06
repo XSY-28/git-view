@@ -1,12 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { QueryError, type GitAdapter, type Navigation, type RawOverview, type RepositoryIdentity } from '@git-view/contracts';
+import { randomUUID } from 'node:crypto';
+import { QueryError, type GitAdapter, type Navigation, type RawOverview, type RepositoryIdentity, type RevisionComparison } from '@git-view/contracts';
 import { createRepositoryQueries, explain } from './index';
 
 const repository: RepositoryIdentity = { repositoryId: 'repo', worktreeId: 'tree', worktreeRoot: '/tmp/example', gitDir: '/tmp/example/.git', commonGitDir: '/tmp/example/.git' };
 const raw: RawOverview = { repository, head: { kind: 'branch', branch: 'main', oid: 'opaque-id' }, changes: { staged: [{ id: 'stage', rawPath: 'YQ==', path: 'a', kind: 'M', comparison: 'head-index', supported: true }], unstaged: [{ id: 'work', rawPath: 'YQ==', path: 'a', kind: 'M', comparison: 'index-worktree', supported: true }], untracked: [], conflicts: [] }, operation: [], complete: true, warnings: [], fingerprint: 'first' };
 function fake(read: GitAdapter['readOverview']): GitAdapter {
   const unavailable = async (): Promise<never> => { throw new Error('unused adapter method'); };
-  return { resolveRepository: async () => repository, readOverview: read, listNavigation: unavailable, readChange: unavailable, listHistory: unavailable, readCommit: unavailable, readCommitChange: unavailable };
+  return { resolveRepository: async () => repository, readOverview: read, listNavigation: unavailable, readChange: unavailable, listHistory: unavailable, readCommit: unavailable, readCommitChange: unavailable, compareRevisions: unavailable, listComparisonCommits: unavailable, readComparisonChange: unavailable };
 }
 const deferred = <T>() => { let resolve!: (value: T) => void; let reject!: (reason: unknown) => void; const promise = new Promise<T>((yes, no) => { resolve = yes; reject = no; }); return { promise, resolve, reject }; };
 
@@ -30,6 +31,21 @@ describe('deterministic evidence rules', () => {
 });
 
 describe('repository observation coordinator', () => {
+  it.each(['success', 'failure'])('late comparison %s cannot be cached after a newer refresh', async outcome => {
+    const old = deferred<RevisionComparison>(); const adapter = fake(async () => raw); let calls = 0;
+    const comparison = (): RevisionComparison => ({ comparisonId: randomUUID(), worktreeId: repository.worktreeId, observedAt: new Date().toISOString(), historyKey: 'history', a: { selector: { kind: 'head' }, label: 'HEAD', oid: 'a'.repeat(40) }, b: { selector: { kind: 'head' }, label: 'HEAD', oid: 'b'.repeat(40) }, mergeBases: { status: 'none', oids: [] }, exclusive: { a: 1, b: 1, complete: true }, endpoints: { base: 'a'.repeat(40), target: 'b'.repeat(40), changes: [] }, warnings: [] });
+    const prior = comparison(); const latest = comparison();
+    adapter.compareRevisions = async () => ++calls === 1 ? old.promise : latest;
+    adapter.listComparisonCommits = async (_repo, value, options) => ({ comparisonId: value.comparisonId, side: options.side, commits: [], complete: true });
+    const queries = createRepositoryQueries(adapter); const session = await queries.open('/fixture');
+    const request = { schemaVersion: 1 as const, action: 'compare' as const, a: { kind: 'head' as const }, b: { kind: 'head' as const }, sessionId: session.sessionId, generation: 0, requestId: 'old' };
+    const pending = queries.execute(request); expect((await queries.execute({ ...request, generation: 1, requestId: 'new' })).ok).toBe(true);
+    if (outcome === 'success') old.resolve(prior); else old.reject(new QueryError('TIMEOUT', 'obsolete failure'));
+    expect((await pending).ok).toBe(false);
+    const page = { schemaVersion: 1 as const, action: 'comparison-commits' as const, sessionId: session.sessionId, generation: 1, requestId: 'page', side: 'a' as const };
+    const obsolete = await queries.execute({ ...page, comparisonId: prior.comparisonId }); expect(!obsolete.ok && obsolete.error.code).toBe('STALE_RESULT');
+    expect((await queries.execute({ ...page, comparisonId: latest.comparisonId })).ok).toBe(true); queries.close();
+  });
   it('writes invalidate all sessions of a worktree, reject late reads, and resume only after every writer releases', async () => {
     const old = deferred<RawOverview>(); let reads = 0;
     const queries = createRepositoryQueries(fake(async () => ++reads === 1 ? old.promise : { ...raw, fingerprint: 'after-write' }));

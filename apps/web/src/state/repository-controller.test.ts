@@ -16,6 +16,14 @@ describe('refresh scheduling', () => {
 });
 
 describe('worktree view memory', () => {
+  it('keeps comparison operands through normal view saves and isolates linked worktrees', () => {
+    const controller = new RepositoryController(); controller.activate('main-worktree');
+    const options = { a: { kind: 'head' as const }, b: { kind: 'ref' as const, name: 'refs/heads/topic' } };
+    controller.comparison(options); controller.save({ view: 'comparison', scope: 'head', allHistoryOrder: 'date' });
+    controller.save({ view: 'history', scope: 'head', allHistoryOrder: 'date' });
+    controller.activate('linked-worktree'); expect(controller.comparison()).toBeUndefined();
+    controller.activate('main-worktree'); expect(controller.comparison()).toEqual(options);
+  });
   it('starts at HEAD and keeps all-reference ordering separate for each worktree', () => {
     const controller = new RepositoryController();
     expect(controller.activate('main-worktree')).toMatchObject({ scope: 'head', allHistoryOrder: 'date' });

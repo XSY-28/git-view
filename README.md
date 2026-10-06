@@ -2,7 +2,7 @@
 
 [![Source checks](https://github.com/XSY-28/git-view/actions/workflows/check.yml/badge.svg)](https://github.com/XSY-28/git-view/actions/workflows/check.yml) · [MIT License](LICENSE)
 
-Git View 是一个本地 Git 图形工具。它把 HEAD、暂存区和工作区的比较分开显示，也能沿提交关系查看历史。你可以在同一窗口里读差异、按文件暂存、提交，以及创建或切换本地分支；写入前先预览、再确认。
+Git View 是一个本地 Git 图形工具。它把 HEAD、暂存区和工作区的比较分开显示，也能沿提交关系查看历史、比较分支或提交。你可以在同一窗口里读差异、按文件暂存、提交，以及创建或切换本地分支；写入前先预览、再确认。
 
 例如，同一个文件已经暂存后又被修改，**Changes（当前改动）** 会分别显示“已暂存”和“未暂存”的差异。切到 **History（提交历史）**，点击一个提交，就能查看它相对父提交改了哪些文件。选择侧栏的分支或标签只改变历史范围，不会切换当前分支。
 
@@ -29,7 +29,16 @@ pnpm install:desktop
 open "$HOME/Applications/Git View.app"
 ```
 
-`--dry-run` 检查构建与安装状态；下一条命令才安装应用。更新前先退出正在运行的 Git View。安装位置固定为 `~/Applications/Git View.app`，旧安装保存为 ZIP；安装成功后移除本次构建副本，减少同名应用入口。备份位置与恢复方法见[安装说明](docs/verification/2026-10-06-desktop-install.md)。
+`--dry-run` 检查构建与安装状态；下一条命令才安装应用。安装位置固定为 `~/Applications/Git View.app`，旧安装保存为 ZIP；安装成功后移除本次构建副本、清理失效的 Git View 注册记录并刷新搜索服务。备份与恢复机制见[安装说明](docs/verification/2026-10-06-desktop-install.md)。
+
+以后更新源码后，先退出 Git View，在项目根目录执行以下命令，一次完成构建和安装；应用仍在运行时，更新命令会在构建前停止并提示退出：
+
+```sh
+pnpm update:desktop
+open "$HOME/Applications/Git View.app"
+```
+
+如果已有安装在 Spotlight 中重复显示，可先运行 `pnpm repair:desktop-search --dry-run` 检查，再运行 `pnpm repair:desktop-search`。它不需要重新构建或替换应用，会清理失效注册并重启当前用户的搜索服务；遇到其他仍存在的 Git View 副本会报告路径并停止。命令核实的是注册与进程状态，重复入口是否消失仍需在 Spotlight 中重新搜索确认。
 
 打开应用后，按 `⌘O` 或点击顶部 **Open repository…（打开仓库…）**，选择一个本地 Git 仓库。也可以展开仓库切换器，在 **Enter path manually（手动输入路径）** 中填写绝对路径。
 
@@ -73,12 +82,29 @@ node scripts/create-demo.mjs
 
 首次提交与空树比较，合并提交默认与第一父提交比较。文件读取失败或取消时保留上次结果，可以重试。预览后仓库状态改变，会要求重新预览；如果执行响应丢失，应用先核实已有回执，不自动重复写入。原生界面与操作恢复的验证范围见[验证记录](docs/verification/v0.2-a.md)、[暂存验证](docs/verification/2026-10-06-stage-files.md)和[提交与分支验证](docs/verification/2026-10-06-commit-branches.md)。
 
+## 比较两个分支或提交
+
+假设 `main` 和 `topic` 从同一提交分出，之后两边都有新的提交。切到 **Compare（版本比较）**，在 A 选择 `main`、B 选择 `topic`，点击 **Compare（比较）**。应用显示解析后的提交 ID、共同祖先，以及 **A exclusive commits / B exclusive commits（两侧独有提交）**；点击独有提交可以查看其详情，不会切换分支。
+
+文件差异提供两个不同的比较基准：
+
+| 基准 | 在这个例子中回答的问题 |
+| --- | --- |
+| **A → B** | `main` 和 `topic` 的文件最终有什么不同？比较两端提交的树，包含两边各自改动带来的差异。 |
+| **Merge base → B（共同祖先 → B）** | 从共同祖先到 `topic`，文件变成了什么样？比较共同祖先的树与 B 的树。 |
+
+![比较共同祖先与 topic 分支的文件差异](docs/verification/screenshots/revision-comparison-native.png)
+
+A/B 也可以选择 HEAD、标签、已有远程跟踪引用或完整/短提交 ID。每次比较显示实际解析的提交 ID，后续分页基于同一对端点读取；刷新或重新比较会创建新的结果。交换 A/B 会重新比较，文件列表支持新旧路径筛选、键盘导航和单列/并排差异。
+
+只有能确定唯一共同祖先时，才启用共同祖先 → B 模式。浅历史会明确标注计数不完整；没有共同祖先或存在多个共同祖先时，不会任意选择一个基准，但仍可比较本机已有的 A/B 提交树。该视图只读取已存储的 Git 对象，不把工作区改动混入比较，也不联网获取缺失对象。设计与验证范围见[比较设计](docs/decisions/0003-revision-comparison.md)和[版本比较验证](docs/verification/2026-10-06-revision-comparison.md)。
+
 ## 使用前需要知道的限制
 
 | 平台 | 当前验证与支持范围 |
 | --- | --- |
-| macOS Apple silicon | 查看、暂存、提交、本地分支及安装副本已有实机验证；CI 覆盖源码、Rust 宿主、安装流程与浏览器回归。 |
-| Windows | CI 覆盖核心 Git 读取、stdio 与桌面宿主；写入未开放，原生界面与安装尚未实机验证。 |
+| macOS Apple silicon | 查看、版本比较、暂存、提交、本地分支及安装副本已有实机验证；CI 覆盖源码、Rust 宿主、安装流程与浏览器回归。 |
+| Windows | CI 检查核心 Git 读取、stdio 与桌面宿主；写入未开放，版本比较的原生界面与安装尚未实机验证。 |
 
 - 暂不提供 push、merge、rebase 或历史重写。远程跟踪引用来自本地仓库，不会自动获取远端更新。
 - 二进制、非 UTF-8、超过 1 MiB 或 10,000 行的内容不展开文本预览。没有文本预览不代表文件没有变化。
@@ -119,7 +145,7 @@ pnpm test:e2e                  # 界面回归
 pnpm test:install-desktop      # macOS 安装与恢复测试
 ```
 
-测试写入使用新建的临时仓库。源码检查和手动桌面验收各有范围，CI 通过不等于所有平台的原生界面已验收。模块职责见[实现基线](docs/decisions/0001-implementation-baseline.md)和[桌面架构](docs/decisions/0002-desktop-host.md)，语言默认值与持久化行为见[语言验证](docs/verification/2026-10-06-language.md)。
+测试写入使用新建的临时仓库。源码检查和手动桌面验收各有范围，CI 通过不等于所有平台的原生界面已验收。模块职责见[实现基线](docs/decisions/0001-implementation-baseline.md)、[桌面架构](docs/decisions/0002-desktop-host.md)和[版本比较设计](docs/decisions/0003-revision-comparison.md)，语言默认值与持久化行为见[语言验证](docs/verification/2026-10-06-language.md)。
 
 欢迎通过 [Issues](https://github.com/XSY-28/git-view/issues) 报告问题或提交 Pull Request。请提供平台、版本、复现步骤和预期结果，并移除日志或截图中的私人信息。
 

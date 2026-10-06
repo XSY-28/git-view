@@ -1,11 +1,11 @@
 import { randomUUID } from 'node:crypto';
-import { QueryError, queryKey, toAppError, overviewSchema, type ApiRequest, type ApiResponse, type GitAdapter, type ReadStamp, type RepositorySession, type RawOverview, type CommitDetail } from '@git-view/contracts';
+import { QueryError, queryKey, toAppError, overviewSchema, type ApiRequest, type ApiResponse, type GitAdapter, type ReadStamp, type RepositorySession, type RawOverview, type CommitDetail, type RevisionComparison } from '@git-view/contracts';
 import { explain } from './explanations';
-import { historyFilterKey } from '@git-view/contracts';
+import { COMPARISON_LIMITS, historyFilterKey } from '@git-view/contracts';
 import { readNavigation } from './navigation';
 export { explain } from './explanations';
 
-type State = { session: RepositorySession; overview?: RawOverview; commits: Map<string, CommitDetail>; historyCursors: Map<string, string>; active: Map<string, { id: string; controller: AbortController }> };
+type State = { session: RepositorySession; overview?: RawOverview; commits: Map<string, CommitDetail>; comparisons: Map<string, RevisionComparison>; historyCursors: Map<string, string>; active: Map<string, { id: string; controller: AbortController }> };
 
 /** At most two semantic Git reads run per worktree, including different UI sessions. */
 class ReadQueue {
@@ -35,7 +35,7 @@ export function createRepositoryQueries(adapter: GitAdapter) {
     for (const state of sessions.values()) {
       if (state.session.repository.worktreeId !== worktreeId) continue;
       state.active.forEach(active => active.controller.abort());
-      state.active.clear(); state.overview = undefined; state.commits.clear(); state.historyCursors.clear();
+      state.active.clear(); state.overview = undefined; state.commits.clear(); state.comparisons.clear(); state.historyCursors.clear();
     }
   }
   function suspendWorktree(worktreeId: string) {
@@ -67,7 +67,7 @@ export function createRepositoryQueries(adapter: GitAdapter) {
   async function open(path: string, signal?: AbortSignal): Promise<RepositorySession> {
     const repository = await adapter.resolveRepository(path, signal);
     const session = { sessionId: randomUUID(), generation: 0, repository };
-    sessions.set(session.sessionId, { session, commits: new Map(), historyCursors: new Map(), active: new Map() });
+    sessions.set(session.sessionId, { session, commits: new Map(), comparisons: new Map(), historyCursors: new Map(), active: new Map() });
     if (!queues.has(repository.worktreeId)) queues.set(repository.worktreeId, new ReadQueue());
     return session;
   }
@@ -86,7 +86,7 @@ export function createRepositoryQueries(adapter: GitAdapter) {
       if (request.generation < state.session.generation) throw new QueryError('STALE_RESULT', '这次读取已被更新的刷新取代。', true);
       if (request.generation > state.session.generation) {
         state.active.forEach(active => active.controller.abort());
-        state.active.clear(); state.overview = undefined; state.commits.clear(); state.historyCursors.clear();
+        state.active.clear(); state.overview = undefined; state.commits.clear(); state.comparisons.clear(); state.historyCursors.clear();
         state.session = { ...state.session, generation: request.generation };
       }
       state.active.get(key)?.controller.abort();
@@ -115,6 +115,27 @@ export function createRepositoryQueries(adapter: GitAdapter) {
             const history = await adapter.listHistory(repository, { scope: request.scope, ref: request.ref, order: request.order, cursor: request.cursor }, readSignal);
             if (!readSignal.aborted && history.nextCursor) captured.historyCursors.set(history.nextCursor, filter);
             return history;
+          }
+          case 'compare': {
+            const comparison = await adapter.compareRevisions(repository, { a: request.a, b: request.b }, readSignal);
+            if (!readSignal.aborted && captured.session.generation === request.generation) {
+              captured.comparisons.set(comparison.comparisonId, comparison);
+              if (captured.comparisons.size > COMPARISON_LIMITS.snapshotsPerSession) captured.comparisons.delete(captured.comparisons.keys().next().value!);
+            }
+            return comparison;
+          }
+          case 'comparison-commits': {
+            const comparison = captured.comparisons.get(request.comparisonId);
+            if (!comparison) throw new QueryError('STALE_RESULT', '比较观测已失效，请重新比较。', true);
+            return adapter.listComparisonCommits(repository, comparison, { side: request.side, cursor: request.cursor }, readSignal);
+          }
+          case 'comparison-change': {
+            const comparison = captured.comparisons.get(request.comparisonId);
+            if (!comparison) throw new QueryError('STALE_RESULT', '比较观测已失效，请重新比较。', true);
+            const tree = request.mode === 'endpoints' ? comparison.endpoints : comparison.fromMergeBase;
+            const entry = tree?.changes.find(item => item.id === request.entryId);
+            if (!entry) throw new QueryError('INVALID_REQUEST', '该文件不属于选择的比较基准。');
+            return adapter.readComparisonChange(repository, comparison, request.mode, entry, readSignal);
           }
           case 'commit': {
             const detail = await adapter.readCommit(repository, request.oid, readSignal);

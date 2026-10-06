@@ -23,7 +23,7 @@ export const headSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('unborn'), branch: z.string() }),
 ]);
 export type HeadState = z.infer<typeof headSchema>;
-export const comparisonSchema = z.enum(['head-index', 'index-worktree', 'untracked-preview', 'commit-parent']);
+export const comparisonSchema = z.enum(['head-index', 'index-worktree', 'untracked-preview', 'commit-parent', 'revision-pair']);
 export type Comparison = z.infer<typeof comparisonSchema>;
 export const changeSchema = z.object({
   id: z.string(), path: z.string(), rawPath: z.string(), oldPath: z.string().optional(), rawOldPath: z.string().optional(),

@@ -1045,7 +1045,9 @@ code {
 
   .view-tabs {
     margin: 0 16px;
-    gap: 23px
+    flex-wrap: wrap;
+    column-gap: 16px;
+    row-gap: 0
   }
 
   .view-tabs>button {

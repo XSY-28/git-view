@@ -17,9 +17,10 @@ export interface RunOptions {
   stderrPreviewChars?: number;
   allowedExitCodes?: number[];
   input?: Buffer;
+  noReplaceObjects?: boolean;
 }
 
-const commands = new Set(['rev-parse', 'symbolic-ref', 'config', 'status', 'diff', 'diff-tree', 'log', 'for-each-ref', 'cat-file', 'ls-files', 'ls-tree', 'check-attr', 'worktree', 'check-ref-format']);
+const commands = new Set(['rev-parse', 'symbolic-ref', 'config', 'status', 'diff', 'diff-tree', 'log', 'for-each-ref', 'cat-file', 'ls-files', 'ls-tree', 'check-attr', 'worktree', 'check-ref-format', 'merge-base', 'rev-list']);
 
 /** The sole subprocess boundary. Never takes shell text or mutating Git commands. */
 export function runGit(cwd: string, args: string[], options: RunOptions = {}): Promise<Buffer> {
@@ -35,6 +36,7 @@ export function runGit(cwd: string, args: string[], options: RunOptions = {}): P
     GIT_OPTIONAL_LOCKS: '0', GIT_TERMINAL_PROMPT: '0', GIT_NO_LAZY_FETCH: '1',
     GIT_PAGER: 'cat', LC_ALL: 'C', LANG: 'C',
   });
+  if (options.noReplaceObjects) env.GIT_NO_REPLACE_OBJECTS = '1';
   const globalArgs = [
     '--no-pager', '--no-optional-locks', '--literal-pathspecs',
     '-c', 'color.ui=false', '-c', 'core.fsmonitor=false', '-c', 'core.untrackedCache=false',

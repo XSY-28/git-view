@@ -5,6 +5,7 @@ import { homedir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
+import { setTimeout as waitFor } from 'node:timers/promises';
 
 const execute = promisify(execFile);
 const project = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -73,7 +74,7 @@ async function requireStopped(run, paths) {
   for (const line of output.split('\n')) {
     const command = line.trim().replace(/^\d+\s+/, '');
     if (command.endsWith('/Contents/MacOS/git-view-desktop') || paths.some(path => command.startsWith(`${path}/Contents/`))) {
-      throw new Error('Git View is running. Quit Git View, then rerun pnpm install:desktop. No process was stopped.');
+      throw new Error('Git View is running. Quit Git View, then rerun the desktop update/install command. No process was stopped.');
     }
   }
 }
@@ -115,8 +116,149 @@ async function removeBuildCopy(source, expectedFingerprint, run) {
   if (await exists(source)) throw new Error('A concurrent build created another application. It was kept; rerun installation after the build finishes.');
 }
 
+async function registeredApplications(run) {
+  const { stdout } = await run(lsregister, ['-dump'], { maxBuffer: 32 * 1024 * 1024 });
+  return stdout.split(/\n-{10,}\n/).flatMap(record => {
+    if (!/^identifier:\s+local\.git-view\.desktop\s*$/m.test(record)) return [];
+    const path = /^path:\s+(.+)$/m.exec(record)?.[1].replace(/\s+\(0x[0-9a-f]+\)\s*$/i, '').trim();
+    return path ? [path] : [];
+  });
+}
+
+function searchState(stdout) {
+  return {
+    state: /^\s*state = (\S+)/m.exec(stdout)?.[1],
+    pid: Number(/^\s*pid = (\d+)/m.exec(stdout)?.[1]) || null,
+  };
+}
+
+async function searchService(run, uid) {
+  let stopped;
+  for (const label of ['com.apple.campo', 'com.apple.Spotlight']) {
+    const target = `gui/${uid}/${label}`;
+    try {
+      const state = searchState((await run('/bin/launchctl', ['print', target])).stdout);
+      const service = { label, target, ...state };
+      if (state.state === 'running' && state.pid) return service;
+      stopped ??= service;
+    } catch { /* The other service may be used by this macOS version. */ }
+  }
+  if (stopped) return stopped;
+  throw new Error('No Spotlight service is loaded in this user login session.');
+}
+
+async function stopOwnedSearchProcess(service, uid, run, wait) {
+  const executable = {
+    'com.apple.campo': '/System/Applications/Siri AI.app/Contents/MacOS/Siri AI',
+    'com.apple.Spotlight': '/System/Library/CoreServices/Spotlight.app/Contents/MacOS/Spotlight',
+  }[service.label];
+  const stillOwned = async () => {
+    let stdout;
+    try { ({ stdout } = await run('/bin/ps', ['-p', String(service.pid), '-o', 'uid=,comm='])); }
+    catch (error) {
+      if (error.code === 1) return false; // ps returns 1 when the process has exited.
+      throw error;
+    }
+    if (!stdout.trim()) return false;
+    const identity = /^\s*(\d+)\s+(.+?)\s*$/.exec(stdout);
+    if (!executable || Number(identity?.[1]) !== uid || identity?.[2] !== executable) {
+      throw new Error(`Refusing to stop an unverified search process: ${service.pid}.`);
+    }
+    return true;
+  };
+  // SIP can block launchctl -k for this protected GUI job. End only the app
+  // owned by this user, then start the loaded job without changing its settings.
+  for (const signal of ['-TERM', '-KILL']) {
+    if (!(await stillOwned())) return;
+    try { await run('/bin/kill', [signal, String(service.pid)]); }
+    catch (error) {
+      if (!(await stillOwned())) return;
+      throw error;
+    }
+    for (let attempt = 0; attempt < 20; attempt += 1) {
+      await wait(100);
+      if (!(await stillOwned())) return;
+    }
+  }
+  throw new Error(`Search process did not exit: ${service.pid}.`);
+}
+
+async function refreshSearchService(service, uid, run, wait) {
+  const waitUntilRunning = async () => {
+    let observedPid;
+    for (let attempt = 0; attempt < 20; attempt += 1) {
+      try {
+        const state = searchState((await run('/bin/launchctl', ['print', service.target])).stdout);
+        if (state.state === 'running' && state.pid && state.pid !== service.pid) {
+          if (state.pid === observedPid) return state;
+          observedPid = state.pid;
+        } else observedPid = undefined;
+      } catch { observedPid = undefined; }
+      await wait(100);
+    }
+    throw new Error('Search service did not reach a stable running state with a fresh process.');
+  };
+  let state;
+  let recoveryAttempted = false;
+  let restartMethod = service.pid ? 'launchctl' : 'start';
+  try {
+    try {
+      await run('/bin/launchctl', ['kickstart', ...(service.pid ? ['-k'] : []), service.target]);
+    } catch (error) {
+      if (!service.pid || !(error.code === 150 || /System Integrity Protection/i.test(`${error.message}\n${error.stderr ?? ''}`))) throw error;
+      restartMethod = 'owned-process';
+      await stopOwnedSearchProcess(service, uid, run, wait);
+      await run('/bin/launchctl', ['kickstart', service.target]);
+    }
+    state = await waitUntilRunning();
+  } catch (restartError) {
+    // A failed restart must not leave the search shortcut without its service.
+    recoveryAttempted = true;
+    try {
+      await run('/bin/launchctl', ['kickstart', service.target]);
+      state = await waitUntilRunning();
+    } catch (error) {
+      let current;
+      try { current = searchState((await run('/bin/launchctl', ['print', service.target])).stdout).state; }
+      catch { current = 'unavailable'; }
+      throw new Error(`Could not refresh ${service.label}; service state: ${current}. ${restartError.message} Retry pnpm repair:desktop-search.`, { cause: error });
+    }
+  }
+  return { status: 'refreshed', service: service.label, previousPid: service.pid, ...state, restartMethod, recoveryAttempted, gui: 'unverified' };
+}
+
+// Repair also works after the build copy was consumed by a previous installation.
+export async function repairDesktopSearch({ home = homedir(), dryRun = false, run = execute,
+  platform = process.platform, uid = process.getuid?.(), wait = waitFor } = {}) {
+  if (platform !== 'darwin') throw new Error('Desktop search repair currently supports macOS only.');
+  if (!Number.isInteger(uid) || uid < 0) throw new Error('Cannot determine the user login session.');
+  home = await realpath(home);
+  const destination = join(home, 'Applications/Git View.app');
+  await checkParents(destination);
+  const build = await validateBundle(destination, run);
+  const registrations = await registeredApplications(run);
+  const stale = [];
+  for (const path of registrations) {
+    if (path === destination) continue;
+    if (await exists(path) && await realpath(path) !== destination) {
+      throw new Error(`Another Git View application exists at ${path}. Archive that copy before repairing search.`);
+    }
+    stale.push(path);
+  }
+  const service = await searchService(run, uid);
+  if (dryRun) return { dryRun: true, destination, build, staleRegistrations: stale, searchService: service.label, status: 'planned' };
+  for (const path of stale) await unregister(path, run);
+  await run(lsregister, ['-f', destination]);
+  const remaining = await registeredApplications(run);
+  if (remaining.length !== 1 || remaining[0] !== destination) {
+    throw new Error(`Git View registration is still not unique: ${remaining.join(', ') || 'missing'}.`);
+  }
+  return { destination, build, removedRegistrations: stale, ...await refreshSearchService(service, uid, run, wait) };
+}
+
 // root/home/run are injected only by tests; the CLI always uses the fixed paths.
-export async function installDesktop({ root = project, home = homedir(), dryRun = false, run = execute, platform = process.platform } = {}) {
+export async function installDesktop({ root = project, home = homedir(), dryRun = false, checkReady = false, run = execute,
+  platform = process.platform, uid = process.getuid?.(), wait = waitFor } = {}) {
   if (platform !== 'darwin') throw new Error('install:desktop currently supports macOS only.');
   root = await realpath(root);
   home = await realpath(home);
@@ -129,13 +271,18 @@ export async function installDesktop({ root = project, home = homedir(), dryRun 
   await checkParents(backups);
   const config = JSON.parse(await readFile(join(root, 'apps/desktop/src-tauri/tauri.conf.json'), 'utf8'));
   if (config.identifier !== bundleId) throw new Error('Unexpected desktop configuration identifier.');
+  if (checkReady) {
+    if (await exists(join(applications, '.git-view-install.lock'))) throw new Error('Another desktop installation may be running. Wait before updating.');
+    await requireStopped(run, [source, destination]);
+    return { status: 'ready', destination };
+  }
   if (!(await exists(source))) throw new Error('Release bundle is missing. Run pnpm build and pnpm build:desktop first.');
   const sourceInfo = await validateBundle(source, run, config.version);
   const hadPrevious = await exists(destination);
   const previousInfo = hadPrevious ? await validateBundle(destination, run) : null;
   await requireStopped(run, [source, destination]);
   const plan = { dryRun, source, destination, build: sourceInfo, previousBuild: previousInfo, backupDirectory: hadPrevious ? backups : null };
-  if (dryRun) return plan;
+  if (dryRun) return { ...plan, searchRefresh: { status: 'planned', gui: 'unverified' } };
 
   await mkdir(applications, { recursive: true });
   const lock = join(applications, '.git-view-install.lock');
@@ -173,7 +320,11 @@ export async function installDesktop({ root = project, home = homedir(), dryRun 
     await run(lsregister, ['-f', destination]);
     committed = true;
     await removeBuildCopy(source, sourceInfo.fingerprint, run);
-    return { ...plan, archive: archive ?? null, installed: true, buildCopyRemoved: true };
+    if (movedPrevious) await unregister(previous, run);
+    await rm(stage, { recursive: true });
+    stage = undefined;
+    const searchRefresh = await repairDesktopSearch({ home, run, platform, uid, wait });
+    return { ...plan, archive: archive ?? null, installed: true, buildCopyRemoved: true, searchRefresh };
   } catch (error) {
     if (!committed) {
       try {
@@ -192,7 +343,7 @@ export async function installDesktop({ root = project, home = homedir(), dryRun 
     }
     if (stage) await rm(stage, { recursive: true });
     stage = undefined;
-    if (committed) throw new Error(`Latest Git View is installed at ${destination}, but duplicate cleanup failed: ${error.message}`, { cause: error });
+    if (committed) throw new Error(`Latest Git View is installed at ${destination}, but post-install cleanup/search refresh failed: ${error.message}`, { cause: error });
     throw error;
   } finally {
     if (committed && stage) await rm(stage, { recursive: true });
@@ -203,8 +354,12 @@ export async function installDesktop({ root = project, home = homedir(), dryRun 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const args = process.argv.slice(2);
   try {
-    if (args.some(arg => arg !== '--dry-run')) throw new Error('Usage: node scripts/install-desktop.mjs [--dry-run]');
-    console.log(JSON.stringify(await installDesktop({ dryRun: args.includes('--dry-run') }), null, 2));
+    if (args.some(arg => !['--dry-run', '--repair-search', '--check-ready'].includes(arg)) ||
+        (args.includes('--repair-search') && args.includes('--check-ready'))) {
+      throw new Error('Usage: node scripts/install-desktop.mjs [--dry-run] [--repair-search | --check-ready]');
+    }
+    const options = { dryRun: args.includes('--dry-run'), checkReady: args.includes('--check-ready') };
+    console.log(JSON.stringify(await (args.includes('--repair-search') ? repairDesktopSearch(options) : installDesktop(options)), null, 2));
   } catch (error) {
     console.error(error.message);
     process.exitCode = 1;

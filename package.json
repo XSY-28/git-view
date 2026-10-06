@@ -21,7 +21,9 @@
     "inspect": "node dist/cli.mjs inspect --repo \"$PWD\" --json",
     "stop": "node dist/cli.mjs shutdown --json",
     "build:desktop": "node scripts/build-desktop.mjs",
+    "update:desktop": "node scripts/install-desktop.mjs --check-ready && pnpm build && pnpm build:desktop && pnpm install:desktop",
     "install:desktop": "node scripts/install-desktop.mjs",
+    "repair:desktop-search": "node scripts/install-desktop.mjs --repair-search",
     "test:install-desktop": "node --test scripts/install-desktop.test.mjs",
     "verify:installed": "node scripts/verify-installed.mjs"
   },

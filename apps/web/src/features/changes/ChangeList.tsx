@@ -22,7 +22,7 @@ type ChangeListProps = {
   onSelect: (entry: ChangeEntry, activate: boolean) => void;
   scrollRef?: Ref<HTMLDivElement>;
   onScroll?: (top: number) => void;
-} & ({ scope: 'changes'; changes: Overview['changes']; operations?: Operations; actions?: ReactNode } | { scope: 'history'; entries: ChangeEntry[] });
+} & ({ scope: 'changes'; changes: Overview['changes']; operations?: Operations; actions?: ReactNode } | { scope: 'history' | 'comparison'; entries: ChangeEntry[] });
 
 export function ChangeList(props: ChangeListProps) {
   const { t, locale } = useI18n();
@@ -61,14 +61,14 @@ export function ChangeList(props: ChangeListProps) {
     return <div key={entry.id} className="file-operation-row"><label className="file-operation-checkbox" title={`${t(operationLabel(kind))} ${entry.path}`}><input type="checkbox" checked={checked} disabled={disabled} aria-label={t('选择{0} {1}', [t(operationLabel(kind)), entry.path])} onChange={() => operations.toggle(entry, kind)}/></label>{button}</div>;
   }
 
-  return <div className={`change-list change-list-${props.scope}`} ref={root} aria-label={props.scope === 'changes' ? t('当前改动文件') : t('提交变化文件')}>
+  return <div className={`change-list change-list-${props.scope}`} ref={root} aria-label={props.scope === 'changes' ? t('当前改动文件') : t(props.scope === 'comparison' ? '比较变化文件' : '提交变化文件')}>
     <div className="change-list-filter">
-      <input type="search" disabled={props.disabled} value={props.filter} onChange={event => props.onFilter(event.target.value)} placeholder={t("筛选文件")} aria-label={props.scope === 'changes' ? t('筛选当前改动文件') : t('筛选提交文件')}/>
+      <input type="search" disabled={props.disabled} value={props.filter} onChange={event => props.onFilter(event.target.value)} placeholder={t("筛选文件")} aria-label={props.scope === 'changes' ? t('筛选当前改动文件') : t(props.scope === 'comparison' ? '筛选比较文件' : '筛选提交文件')}/>
       {filtering && <span aria-live="polite">{visible.length} / {entries.length}</span>}
     </div>
     {props.scope === 'changes' && props.actions}
     <div ref={props.scrollRef} className={props.scope === 'changes' ? 'file-groups' : 'filtered-commit-files'} onScroll={event => props.onScroll?.(event.currentTarget.scrollTop)}>
-      {filtering && !visible.length ? <p className="file-filter-empty" role="status">{t("无匹配文件")}</p> : props.scope === 'history' ? (visible.length ? visible.map(row) : <p className="file-filter-empty">{t("无变化文件")}</p>) : groups.map(group => {
+      {filtering && !visible.length ? <p className="file-filter-empty" role="status">{t("无匹配文件")}</p> : props.scope !== 'changes' ? (visible.length ? visible.map(row) : <p className="file-filter-empty">{t("无变化文件")}</p>) : groups.map(group => {
         const all = props.changes[group.key];
         const matching = all.filter(entry => matchesFileFilter(entry, props.filter));
         if ((!all.length && group.key === 'conflicts') || (filtering && !matching.length)) return null;

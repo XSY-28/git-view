@@ -11,6 +11,7 @@ export function comparisonObjects(diff: Diff): { before?: DiffObject; after: Dif
     case 'head-index': return { before: { label: emptyTree ? '空树' : 'HEAD', value: diff.base }, after: { label: '暂存区', value: diff.target } };
     case 'index-worktree': return { before: { label: '暂存区', value: diff.base }, after: { label: '工作区', value: diff.target } };
     case 'commit-parent': return { before: { label: emptyTree ? '空树' : '父提交', value: diff.base }, after: { label: '所选提交', value: diff.target } };
+    case 'revision-pair': return { before: { label: '基准提交', value: diff.base }, after: { label: '目标提交', value: diff.target } };
     case 'untracked-preview': return { after: { label: '工作区 · 未跟踪文件', value: diff.target } };
   }
 }

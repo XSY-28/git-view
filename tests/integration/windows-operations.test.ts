@@ -6,6 +6,7 @@ import { randomUUID } from 'node:crypto';
 import { createGitAdapter } from '../../packages/git-cli/src/index';
 import { createOperations } from '../../packages/operations/src/index';
 import { cleanupFixtures, repository, temporaryDirectory, fixtureGit as git, write, commit, GIT_OPERATION_TEST_TIMEOUT } from '../fixtures/git';
+type WithoutFingerprint<T> = T extends unknown ? Omit<T, 'fingerprint'> : never;
 afterAll(cleanupFixtures);
 describe('portable repository operations', { timeout: GIT_OPERATION_TEST_TIMEOUT }, () => {
   it('stages canonical LF from CRLF without changing the worktree, then unstages, commits and switches branches', async () => {
@@ -15,8 +16,8 @@ describe('portable repository operations', { timeout: GIT_OPERATION_TEST_TIMEOUT
     write(root,'中文 文件.txt','V2\r\n');
     const read=createGitAdapter(); const session={sessionId:randomUUID(),generation:0,repository:await read.resolveRepository(root)};
     const ops=await createOperations({directory:temporaryDirectory(),read});
-    async function preview(input: OperationInput) { const overview=await read.readOverview(session.repository); return ops.preview(session,{...input,fingerprint:overview.fingerprint}); }
-    async function execute(input: OperationInput) { const p=await preview(input); const id=randomUUID(); const receipt=await ops.execute(session,p.previewId,id,true); expect(receipt, JSON.stringify(receipt)).toMatchObject({status:'succeeded'}); expect(await ops.execute(session,p.previewId,id,true)).toEqual(receipt); return receipt; }
+    async function preview(input: WithoutFingerprint<OperationInput>) { const overview=await read.readOverview(session.repository); return ops.preview(session,{...input,fingerprint:overview.fingerprint}); }
+    async function execute(input: WithoutFingerprint<OperationInput>) { const p=await preview(input); const id=randomUUID(); const receipt=await ops.execute(session,p.previewId,id,true); expect(receipt, JSON.stringify(receipt)).toMatchObject({status:'succeeded'}); expect(await ops.execute(session,p.previewId,id,true)).toEqual(receipt); return receipt; }
     const before=readFileSync(path.join(root,'中文 文件.txt'));
     let overview=await read.readOverview(session.repository); await execute({kind:'stage-files',entryIds:overview.changes.unstaged.map(x=>x.id)});
     expect(git(root,['show',':中文 文件.txt'])).toBe('V2'); expect(readFileSync(path.join(root,'中文 文件.txt'))).toEqual(before);

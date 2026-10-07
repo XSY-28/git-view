@@ -1,6 +1,6 @@
 # 安装 Git View 预览包
 
-在 [GitHub Releases](https://github.com/XSY-28/git-view/releases) 选择同一版本的安装包与 `.sha256` 文件。当前目标平台为 macOS 13.5 及以上的 Apple silicon（arm64）和 Windows x64，尚不提供 Intel Mac、Windows ARM 或 Linux 安装包。macOS 下限由包内 [Node 24 的平台要求](https://github.com/nodejs/node/blob/v24.19.0/BUILDING.md#platform-list)决定。
+在 [打包工作流](https://github.com/XSY-28/git-view/actions/workflows/package.yml) 的成功运行中下载对应平台的 Artifacts ZIP（需要登录 GitHub），解压后取出安装包与 `.sha256` 文件。正式发布后也可在 [GitHub Releases](https://github.com/XSY-28/git-view/releases) 下载同版本文件。当前目标平台为 macOS 13.5 及以上的 Apple silicon（arm64）和 Windows x64，尚不提供 Intel Mac、Windows ARM 或 Linux 安装包。macOS 下限由包内 [Node 24 的平台要求](https://github.com/nodejs/node/blob/v24.19.0/BUILDING.md#platform-list)决定。
 
 ## macOS Apple silicon
 
@@ -35,6 +35,6 @@ Windows 当前只支持查看，包括当前改动、历史、版本比较和历
 包构建工作流分别在 macOS ARM 与 Windows x64 runner 上执行类型检查、适用的真实 Git 测试和 Rust 宿主测试，再构建安装包。
 
 - macOS：验证 DMG 完整性和挂载、执行包内安装程序 dry-run，并对从 DMG 解压出的内容验证内置 Node、中文/空格路径、仓库只读指纹和 stdio 退出。原生 GUI 在本机固定安装路径验收。
-- Windows：运行真正的 NSIS 静默安装，对安装结果做包内运行检查；启动安装后的 release 应用，用 WebView2 调试连接驱动真实窗口和 Tauri IPC，检查打开中文路径仓库、暂存/未暂存差异、历史差异、正常关闭与 Node 子进程回收，最后卸载。
+- Windows：运行真正的 NSIS 静默安装到包含中文和空格的目录，对安装结果做包内运行检查；启动安装后的 release 应用，用 WebView2 调试连接驱动真实窗口和 Tauri IPC，检查打开中文路径仓库、暂存/未暂存差异、历史差异、正常关闭与 Node 子进程回收，最后卸载。
 
 这些检查的通过与失败以该版本对应的 GitHub Actions 和随包验证报告为准。Windows runner 是 CI 系统，不能替代所有 Windows 10/11 实体电脑上的验收；SmartScreen、Gatekeeper、人工安装向导和原生系统目录选择对话框也需要目标设备复测。当前安装包没有自动更新机制。

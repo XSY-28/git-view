@@ -1,5 +1,5 @@
 $ErrorActionPreference = 'Stop'
-$install = Join-Path $env:RUNNER_TEMP 'GitViewPackageInstall'
+$install = Join-Path $env:RUNNER_TEMP 'Git View 中文 安装'
 if (Test-Path $install) { throw "Verification directory already exists: $install" }
 $packages = @(Get-ChildItem 'dist/installers/*-setup.exe')
 if ($packages.Count -ne 1) { throw 'Expected exactly one NSIS installer' }

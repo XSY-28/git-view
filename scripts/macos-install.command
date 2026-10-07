@@ -2,6 +2,8 @@
 set -euo pipefail
 package_dir="$(cd "$(dirname "$0")" && pwd)"
 work_dir="$(/usr/bin/mktemp -d /tmp/git-view-package.XXXXXX)"
+# Node resolves the script URL to a physical path; keep argv on the same path.
+work_dir="$(cd "$work_dir" && pwd -P)"
 trap '/bin/rm -rf "$work_dir"' EXIT
 bundle_dir="$work_dir/apps/desktop/src-tauri/target/release/bundle/macos"
 /bin/mkdir -p "$bundle_dir" "$work_dir/scripts"

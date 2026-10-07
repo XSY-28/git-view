@@ -3,6 +3,7 @@ import { mkdir, mkdtemp, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { promisify } from 'node:util';
+import assert from 'node:assert/strict';
 
 const exec = promisify(execFile);
 if (process.platform !== 'darwin') throw new Error('macOS verification must run on macOS.');
@@ -17,7 +18,9 @@ try {
   await exec('/usr/bin/hdiutil', ['attach', '-nobrowse', '-readonly', '-mountpoint', mount, join(folder, images[0])]);
   mounted = true;
   const command = join(mount, 'Install Git View.command');
-  await exec('/bin/bash', [command, '--dry-run'], { timeout: 90_000 });
+  const plan = JSON.parse((await exec('/bin/bash', [command, '--dry-run'], { timeout: 90_000 })).stdout);
+  assert.equal(plan.dryRun, true);
+  assert.equal(plan.searchRefresh.status, 'planned');
   const report = JSON.parse((await exec('/bin/bash', [command, '--verify-only'], { timeout: 120_000 })).stdout);
   report.checks.dmgMountedAndInstallerDryRun = true;
   report.checks.extractedPayloadVerified = true;

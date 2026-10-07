@@ -4,7 +4,7 @@ import { createHash } from 'node:crypto';
 import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { basename, join, resolve } from 'node:path';
 import { promisify } from 'node:util';
 import { setTimeout as wait } from 'node:timers/promises';
 import { chromium, expect } from '@playwright/test';
@@ -19,7 +19,7 @@ const exec = promisify(execFile);
 const env = { ...process.env, GIT_VIEW_HOME: join(temporary, 'state'), GIT_CONFIG_NOSYSTEM: '1', GIT_CONFIG_GLOBAL: 'NUL' };
 for (const name of Object.keys(env)) if (name.startsWith('GIT_') && !['GIT_VIEW_HOME', 'GIT_CONFIG_NOSYSTEM', 'GIT_CONFIG_GLOBAL'].includes(name)) delete env[name];
 let child; let browser; let exited;
-let diagnostic = ''; let probeFailure;
+let diagnostic = ''; let probeFailure; let policyOverride;
 const report = { platform: process.platform, arch: process.arch, executable, checks: {}, environment: 'GitHub Windows runner; installed release WebView2 window', physicalWindows10Or11: 'unverified' };
 try {
   await mkdir(output, { recursive: true });
@@ -48,6 +48,17 @@ try {
   await new Promise(resolveListen => server.listen(0, '127.0.0.1', resolveListen));
   const port = server.address().port;
   await new Promise(resolveClose => server.close(resolveClose));
+  // WebView2 150+ ignores environment debug flags in elevated hosts.
+  // Scope its documented HKLM override to this executable on the disposable runner,
+  // and restore any previous value even when verification fails.
+  const policyKey = 'HKLM:\\SOFTWARE\\Policies\\Microsoft\\Edge\\WebView2\\AdditionalBrowserArguments';
+  const policyName = basename(executable).replaceAll("'", "''");
+  const elevated = (await exec('powershell.exe', ['-NoProfile', '-Command', "([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)"])).stdout.trim() === 'True';
+  report.elevatedHost = elevated;
+  if (elevated) {
+    policyOverride = { key: policyKey, name: policyName, previous: JSON.parse((await exec('powershell.exe', ['-NoProfile', '-Command', `$ErrorActionPreference='Stop'; $k='${policyKey}'; $n='${policyName}'; $v=Get-ItemPropertyValue -LiteralPath $k -Name $n -ErrorAction SilentlyContinue; ConvertTo-Json -Compress -InputObject $v`])).stdout) };
+    await exec('powershell.exe', ['-NoProfile', '-Command', `$ErrorActionPreference='Stop'; New-Item -Path '${policyKey}' -Force | Out-Null; New-ItemProperty -LiteralPath '${policyKey}' -Name '${policyName}' -PropertyType String -Value '--remote-debugging-port=${port} --remote-debugging-address=127.0.0.1' -Force | Out-Null`]);
+  }
   // This debugging endpoint exists only in the disposable CI process.
   child = spawn(executable, [], { env: { ...env, WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS: `--remote-debugging-port=${port} --remote-debugging-address=127.0.0.1`, WEBVIEW2_USER_DATA_FOLDER: join(temporary, 'webview') }, stdio: ['ignore', 'pipe', 'pipe'] });
   child.stdout.on('data', chunk => { diagnostic += chunk; });
@@ -107,5 +118,12 @@ try {
 } finally {
   await browser?.close().catch(() => {});
   if (child && child.exitCode === null) { await exec('taskkill.exe', ['/PID', String(child.pid), '/T', '/F']).catch(() => {}); await exited.catch(() => {}); }
+  if (policyOverride) {
+    const { key, name, previous } = policyOverride;
+    const restore = previous === null
+      ? `Remove-ItemProperty -LiteralPath '${key}' -Name '${name}' -ErrorAction SilentlyContinue`
+      : `New-ItemProperty -LiteralPath '${key}' -Name '${name}' -PropertyType String -Value '${String(previous).replaceAll("'", "''")}' -Force | Out-Null`;
+    await exec('powershell.exe', ['-NoProfile', '-Command', restore]);
+  }
   await rm(temporary, { recursive: true, force: true, maxRetries: 10, retryDelay: 500 });
 }

@@ -129,7 +129,7 @@ try {
   assert.equal(await readFile(join(fixture, '中文 文件.txt'), 'utf8'), 'version three working\r\n');
   report.checks.unstagePreservesWorkingFile = true;
   // Select both ordinary files so the later branch switch starts clean.
-  for (const checkbox of await page.locator('.group-unstaged input[type=checkbox]').all()) await checkbox.check();
+  for (const checkbox of await page.locator('.group-unstaged input[type=checkbox], .group-untracked input[type=checkbox]').all()) await checkbox.check();
   await page.locator('[data-operation-preview]').click(); await confirm();
   assert.equal((await git('show', ':中文 文件.txt')).stdout, 'version three working\n');
   report.checks.stageWithCrlfConversion = true;

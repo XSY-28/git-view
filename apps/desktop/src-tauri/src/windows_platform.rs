@@ -457,6 +457,32 @@ mod tests {
         result.unwrap();
     }
     #[test]
+    fn refuses_replacement_and_private_reads_through_a_directory_junction() {
+        let root = std::env::temp_dir().join(format!("git-view-junction-{}", uuid::Uuid::new_v4()));
+        fs::create_dir(&root).unwrap();
+        let target = root.join("target");
+        fs::create_dir(&target).unwrap();
+        fs::write(target.join("source"), b"original").unwrap();
+        let link = root.join("link");
+        let result = (|| -> Result<(), String> {
+            let output = std::process::Command::new("cmd.exe")
+                .args(["/D", "/C", "mklink", "/J"])
+                .arg(&link)
+                .arg(&target)
+                .output()
+                .map_err(|e| e.to_string())?;
+            if !output.status.success() {
+                return Err(String::from_utf8_lossy(&output.stderr).into_owned());
+            }
+            assert!(private(&link.join("source"), &user_sid()?, false).is_err());
+            assert!(replace(&link.join("source"), &link.join("destination")).is_err());
+            assert_eq!(fs::read(target.join("source")).unwrap(), b"original");
+            Ok(())
+        })();
+        let _ = fs::remove_dir_all(&root);
+        result.unwrap();
+    }
+    #[test]
     fn rejects_a_private_receipt_with_an_everyone_allow_rule() {
         let root = std::env::temp_dir().join(format!("git-view-acl-{}", uuid::Uuid::new_v4()));
         fs::create_dir(&root).unwrap();

@@ -80,7 +80,7 @@ it('recovers after actual SIGKILL between index installation and final receipt, 
   });
 
   const terminated = await runUntilExit(bundle, [root, directory, operationId]);
-  expect(terminated, terminated.stderr).toMatchObject({ code: null, signal: 'SIGKILL' });
+  expect(terminated, terminated.stderr).toMatchObject(process.platform === 'win32' ? { code: 1, signal: null, stderr: '' } : { code: null, signal: 'SIGKILL' });
   const receiptFile = path.join(directory, 'operations', `${hash(operationId)}.json`);
   const pendingFile = path.join(directory, 'operations', 'pending', `${hash(operationId)}.json`);
   const interrupted = storedReceiptSchema.parse(JSON.parse(readFileSync(receiptFile, 'utf8')));
@@ -151,7 +151,7 @@ it('recovers a real committed OID after SIGKILL before the observed result is pe
     await operations.execute(session, preview.previewId, operationId, true);
     throw new Error('Expected SIGKILL');
   ` }, outfile: bundle, bundle: true, platform: 'node', target: 'node24', format: 'esm', tsconfig: path.join(projectRoot, 'tsconfig.json'), logLevel: 'silent' });
-  const exit = await runUntilExit(bundle, [root, directory, operationId]); expect(exit, exit.stderr).toMatchObject({ code: null, signal: 'SIGKILL' });
+  const exit = await runUntilExit(bundle, [root, directory, operationId]); expect(exit, exit.stderr).toMatchObject(process.platform === 'win32' ? { code: 1, signal: null, stderr: '' } : { code: null, signal: 'SIGKILL' });
   const file = path.join(directory, 'operations', `${hash(operationId)}.json`);
   const interrupted = storedReceiptSchema.parse(JSON.parse(readFileSync(file, 'utf8')));
   expect(interrupted.receipt.status).toBe('running');

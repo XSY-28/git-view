@@ -1,5 +1,5 @@
 import { constants } from 'node:fs';
-import { lstat, open, readlink, mkdtemp, rename, rm, writeFile, mkdir } from 'node:fs/promises';
+import { lstat, open, readlink, mkdtemp, rm, writeFile, mkdir } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import path from 'node:path';

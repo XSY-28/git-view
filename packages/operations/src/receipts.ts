@@ -1,5 +1,5 @@
 import { constants, type Stats } from 'node:fs';
-import { chmod, link, lstat, mkdir, open, opendir, realpath, rename, unlink } from 'node:fs/promises';
+import { chmod, link, lstat, mkdir, open, opendir, realpath, unlink } from 'node:fs/promises';
 import path from 'node:path';
 import { checkPrivate, privateDirectoryPermissions, syncDirectory, replaceFile, openRead } from '../../git-write/src/filesystem.js';
 import { createHash, randomUUID } from 'node:crypto';
@@ -103,14 +103,19 @@ export async function createReceiptStore(directory: string) {
       let count = 0, receiptCount = 0, bytes = 0;
       // Completed history is intentionally not scanned. A marker is durable before
       // writer invocation and removed only after a terminal receipt is durable.
+      const names: string[] = [];
       const directory = await opendir(pendingRoot);
       for await (const entry of directory) {
         if (++count > 2000) throw new QueryError('OUTPUT_LIMIT', '待核实索引超过 2000 项，无法完整检查待核实操作。请先整理应用数据目录。');
         if (!entry.name.endsWith('.json')) continue;
         if (++receiptCount > 1000) throw new QueryError('OUTPUT_LIMIT', '待核实操作超过 1000 项，无法完整检查。请先按操作 ID 核对回执。');
         if (!/^[a-f0-9]{64}\.json$/.test(entry.name)) throw new QueryError('INTERNAL_ERROR', '待核实索引含无法识别的文件，未忽略该文件。');
-        const marker = pendingMarkerSchema.safeParse(await readJson(path.join(pendingRoot, entry.name)));
-        if (!marker.success || hash(marker.data.operationId) !== entry.name.slice(0, -5)) throw new QueryError('INTERNAL_ERROR', '待核实索引内容无效，无法可靠恢复。');
+        names.push(entry.name);
+      }
+      // Reject an oversized scan before launching per-file native ACL checks.
+      for (const name of names) {
+        const marker = pendingMarkerSchema.safeParse(await readJson(path.join(pendingRoot, name)));
+        if (!marker.success || hash(marker.data.operationId) !== name.slice(0, -5)) throw new QueryError('INTERNAL_ERROR', '待核实索引内容无效，无法可靠恢复。');
         const file = receiptPath(marker.data.operationId);
         const stat = await lstat(file); await checkPrivate(file, stat, false);
         bytes += stat.size;

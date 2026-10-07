@@ -19,6 +19,10 @@ jobs:
           node-version: 24.19.0
           cache: pnpm
       - uses: dtolnay/rust-toolchain@1.99.0
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: apps/desktop/src-tauri
+          cache-on-failure: true
       - run: pnpm install --frozen-lockfile
       - run: pnpm typecheck
       - name: Prepare Windows native write bridge

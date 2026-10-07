@@ -4,6 +4,8 @@ import { QueryError, type RepositoryIdentity } from '@git-view/contracts';
 
 /** Private plumbing boundary. There is deliberately no API accepting user commands. */
 export function runPlumbing(repository: RepositoryIdentity, args: string[], options: { input?: Buffer; index?: string; signal?: AbortSignal; allowMissing?: boolean; normalization?: { gitDir: string; worktree: string } } = {}): Promise<Buffer> {
+  // Git for Windows accepts NUL, while Node's device namespace \\.\nul is not a Git config path.
+  const gitNull = process.platform === 'win32' ? 'NUL' : devNull;
   const exact = (expected: string[]) => args.length === expected.length && args.every((value, i) => value === expected[i]);
   const allowed = exact(['config', '--null', '--list', '--show-origin', '--includes'])
     || exact(['rev-parse', '--verify', '--quiet', 'HEAD']) || exact(['rev-parse', '--show-object-format'])
@@ -17,8 +19,8 @@ export function runPlumbing(repository: RepositoryIdentity, args: string[], opti
   if (options.signal?.aborted) return Promise.reject(new QueryError('CANCELLED', '操作已取消。'));
   const env: NodeJS.ProcessEnv = {};
   for (const [key, value] of Object.entries(process.env)) if (!key.startsWith('GIT_')) env[key] = value;
-  Object.assign(env, { GIT_DIR: options.normalization?.gitDir ?? repository.gitDir, GIT_WORK_TREE: options.normalization?.worktree ?? repository.worktreeRoot, ...(options.normalization ? { GIT_CONFIG_NOSYSTEM: '1', GIT_CONFIG_GLOBAL: devNull, GIT_ATTR_NOSYSTEM: '1', GIT_OBJECT_DIRECTORY: `${repository.commonGitDir}/objects` } : {}), GIT_OPTIONAL_LOCKS: '0', GIT_TERMINAL_PROMPT: '0', GIT_NO_LAZY_FETCH: '1', LC_ALL: 'C', LANG: 'C', ...(options.index ? { GIT_INDEX_FILE: options.index } : {}) });
-  const fixed = ['--no-pager', '--no-optional-locks', '--literal-pathspecs', '-c', `core.hooksPath=${devNull}`, '-c', 'core.fsmonitor=false', '-c', 'core.untrackedCache=false', '-c', 'core.splitIndex=false', '-c', 'core.pager=cat', '-c', 'diff.external=', '-c', 'submodule.recurse=false', '-c', 'protocol.allow=never', '-c', 'gc.auto=0', '-c', 'maintenance.auto=false'];
+  Object.assign(env, { GIT_DIR: options.normalization?.gitDir ?? repository.gitDir, GIT_WORK_TREE: options.normalization?.worktree ?? repository.worktreeRoot, ...(options.normalization ? { GIT_CONFIG_NOSYSTEM: '1', GIT_CONFIG_GLOBAL: gitNull, GIT_ATTR_NOSYSTEM: '1', GIT_OBJECT_DIRECTORY: `${repository.commonGitDir}/objects` } : {}), GIT_OPTIONAL_LOCKS: '0', GIT_TERMINAL_PROMPT: '0', GIT_NO_LAZY_FETCH: '1', LC_ALL: 'C', LANG: 'C', ...(options.index ? { GIT_INDEX_FILE: options.index } : {}) });
+  const fixed = ['--no-pager', '--no-optional-locks', '--literal-pathspecs', '-c', `core.hooksPath=${gitNull}`, '-c', 'core.fsmonitor=false', '-c', 'core.untrackedCache=false', '-c', 'core.splitIndex=false', '-c', 'core.pager=cat', '-c', 'diff.external=', '-c', 'submodule.recurse=false', '-c', 'protocol.allow=never', '-c', 'gc.auto=0', '-c', 'maintenance.auto=false'];
   return new Promise((resolve, reject) => {
     const child = spawn('git', [...fixed, ...args], { cwd: options.normalization?.worktree ?? repository.worktreeRoot, env, shell: false, windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'] });
     const stdout: Buffer[] = [], stderr: Buffer[] = [];

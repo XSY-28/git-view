@@ -33,7 +33,7 @@ export async function runStdio(queries: RepositoryQueries, directory: string, in
       const controller = new AbortController(); pending.set(envelope.id, controller);
       try {
         const response = envelope.operation === 'session' ? service.session(envelope.sessionId)
-          : envelope.operation === 'watch' ? service.watch(envelope.sessionId)
+          : envelope.operation === 'watch' ? await service.watch(envelope.sessionId)
           : envelope.operation === 'write' ? await service.operation(envelope.request, controller.signal)
           : await service.request(envelope.request, controller.signal);
         send(envelope.id, response);

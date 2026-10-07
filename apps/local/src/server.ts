@@ -106,7 +106,7 @@ export async function startLocalServer(options: LocalServerOptions) {
           sessionId = parsed.data.sessionId;
         }
         if (!sessionId) throw new QueryError('INVALID_REQUEST', '缺少会话标识。');
-        allowSession(sessionId); respond(response, 200, url.pathname === '/api/watch' ? service.watch(sessionId) : service.session(sessionId)); return;
+        allowSession(sessionId); respond(response, 200, url.pathname === '/api/watch' ? await service.watch(sessionId) : service.session(sessionId)); return;
       }
       if (url.pathname === '/api/operations' && request.method === 'POST') {
         requireAuthentication();

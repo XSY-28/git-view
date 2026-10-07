@@ -25,7 +25,7 @@ export async function createLocalService(queries: RepositoryQueries, directory: 
   return {
     recents,
     session: (id: string) => success(queries.getSession(id)),
-    watch: (id: string) => success(watchers.state(queries.getSession(id).repository)),
+    watch: async (id: string) => success(await watchers.state(queries.getSession(id).repository)),
     async operation(request: OperationRequest, signal?: AbortSignal) {
       const session = queries.getSession(request.sessionId);
       if (request.action === 'preview') {

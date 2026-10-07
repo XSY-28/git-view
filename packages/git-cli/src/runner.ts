@@ -20,7 +20,7 @@ export interface RunOptions {
   noReplaceObjects?: boolean;
 }
 
-const commands = new Set(['rev-parse', 'symbolic-ref', 'config', 'status', 'diff', 'diff-tree', 'log', 'for-each-ref', 'cat-file', 'ls-files', 'ls-tree', 'check-attr', 'worktree', 'check-ref-format', 'merge-base', 'rev-list']);
+const commands = new Set(['rev-parse', 'symbolic-ref', 'config', 'status', 'diff', 'diff-tree', 'log', 'for-each-ref', 'cat-file', 'ls-files', 'ls-tree', 'check-attr', 'worktree', 'check-ref-format', 'merge-base', 'rev-list', 'blame']);
 
 /** The sole subprocess boundary. Never takes shell text or mutating Git commands. */
 export function runGit(cwd: string, args: string[], options: RunOptions = {}): Promise<Buffer> {

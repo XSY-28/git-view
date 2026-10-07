@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
-import { comparisonOptionsSchema, type ComparisonOptions, type Navigation, type RevisionEndpoint, type RepositorySession, type CommitNode } from '@git-view/contracts';
+import { comparisonOptionsSchema, type ComparisonOptions, type Navigation, type RepositorySession, type CommitNode, type Diff } from '@git-view/contracts';
 import { useI18n } from '../../i18n';
 import { ChangeList } from '../changes/ChangeList';
+import { RevisionPicker } from '../navigation/RevisionPicker';
 import { DiffView } from '../changes/DiffView';
 import { ReadFeedback } from '../feedback/ReadFeedback';
 import { listNavigationTarget } from '../navigation/list-navigation';
@@ -13,24 +14,12 @@ function defaultOptions(navigation?: Navigation, commit?: string): ComparisonOpt
   const ref = navigation?.refs.find(ref => !ref.current && ref.kind === 'local');
   return { a: { kind: 'head' }, b: commit ? { kind: 'commit', oid: commit } : ref ? { kind: 'ref', name: ref.name } : { kind: 'head' } };
 }
-function EndpointPicker({ side, value, navigation, disabled, onChange }: { side: 'A' | 'B'; value: RevisionEndpoint; navigation?: Navigation; disabled: boolean; onChange: (value: RevisionEndpoint) => void }) {
-  const { t } = useI18n();
-  const selected = value.kind === 'ref' ? value.name : value.kind;
-  return <div className="comparison-endpoint"><label htmlFor={`comparison-${side}`}>{side}</label><div className="comparison-endpoint-fields">
-    <select id={`comparison-${side}`} aria-label={t('比较端点 {0}', [side])} value={selected} disabled={disabled} onChange={event => onChange(event.target.value === 'head' ? { kind: 'head' } : event.target.value === 'commit' ? { kind: 'commit', oid: '' } : { kind: 'ref', name: event.target.value })}>
-      <option value="head">HEAD</option>
-      {(['local', 'remote', 'tag'] as const).map(kind => <optgroup key={kind} label={t(kind === 'local' ? '本地分支' : kind === 'remote' ? '远程引用' : '标签')}>{navigation?.refs.filter(ref => ref.kind === kind).map(ref => <option key={ref.name} value={ref.name}>{displayRef(ref.name)}</option>)}</optgroup>)}
-      {value.kind === 'ref' && !navigation?.refs.some(ref => ref.name === value.name) && <option value={value.name}>{displayRef(value.name)}</option>}
-      <option value="commit">{t('提交 ID…')}</option>
-    </select>
-    {value.kind === 'commit' && <input aria-label={t('{0} 提交 ID', [side])} placeholder={t('完整或短提交 ID')} value={value.oid} spellCheck={false} autoComplete="off" maxLength={64} disabled={disabled} onChange={event => onChange({ kind: 'commit', oid: event.target.value.trim() })}/>}
-  </div></div>;
-}
 
-export function ComparisonView({ session, navigation, initialOptions, initialCommit, blocked, mobilePanel, onShowDiff, onSelectCommit, onOptionsChange, onCancellation }: {
+export function ComparisonView({ session, navigation, initialOptions, initialCommit, blocked, mobilePanel, onShowDiff, onSelectCommit, onOptionsChange, onCancellation, onFileHistory }: {
   session: RepositorySession; navigation?: Navigation; initialOptions?: ComparisonOptions; initialCommit?: string; blocked: boolean;
   mobilePanel: 'navigation' | 'list' | 'diff'; onShowDiff: () => void; onSelectCommit: (node: CommitNode) => void;
   onOptionsChange: (options: ComparisonOptions) => void; onCancellation: (cancelled: boolean) => void;
+  onFileHistory?: (diff: Diff) => void;
 }) {
   const { t } = useI18n();
   const [options, setOptions] = useState<ComparisonOptions>(() => initialOptions ?? defaultOptions(navigation, initialCommit));
@@ -61,9 +50,9 @@ export function ComparisonView({ session, navigation, initialOptions, initialCom
   }
   return <div className="comparison-view">
     <form className="comparison-form" aria-label={t('版本比较')} onSubmit={event => { event.preventDefault(); compare(); }}>
-      <EndpointPicker side="A" value={options.a} navigation={navigation} disabled={blocked} onChange={a => change({ ...options, a })}/>
+      <RevisionPicker id="comparison-A" caption="A" label={t('比较端点 {0}', ['A'])} commitLabel={t('{0} 提交 ID', ['A'])} value={options.a} navigation={navigation} disabled={blocked} onChange={a => change({ ...options, a })}/>
       <button className="comparison-swap" type="button" title={t('交换 A 与 B')} aria-label={t('交换 A 与 B')} disabled={blocked} onClick={() => { const next = { a: options.b, b: options.a }; change(next); if (comparisonOptionsSchema.safeParse(next).success) read.compare(next); }}>⇄</button>
-      <EndpointPicker side="B" value={options.b} navigation={navigation} disabled={blocked} onChange={b => change({ ...options, b })}/>
+      <RevisionPicker id="comparison-B" caption="B" label={t('比较端点 {0}', ['B'])} commitLabel={t('{0} 提交 ID', ['B'])} value={options.b} navigation={navigation} disabled={blocked} onChange={b => change({ ...options, b })}/>
       <button className="button comparison-submit" type="submit" disabled={!valid || blocked || read.comparison.loading}>{t('比较')}</button>
     </form>
     <ReadFeedback state={read.comparison} hasValue={Boolean(result)} scope={t('版本比较')} className="comparison-read" onCancel={() => read.cancel('compare')} onRetry={() => { if (valid) read.compare(options, true); }}/>
@@ -86,7 +75,7 @@ export function ComparisonView({ session, navigation, initialOptions, initialCom
         <aside className="list-panel"><ChangeList scope="comparison" entries={tree?.changes ?? []} selected={read.selectedId} disabled={!read.fresh} filter={filter} onFilter={value => { setFilter(value); read.filterFiles(value); }} onSelect={(entry, activate) => { read.selectFile(entry); if (activate) onShowDiff(); }}/></aside>
         <section className="detail-panel" aria-label={t('比较文件详情')}>
           <ReadFeedback state={read.diff} hasValue={Boolean(read.diff.value)} scope={t('比较文件差异')} className="diff-read-state" onCancel={() => read.cancel('diff')} onRetry={() => { if (read.fresh) read.retryDiff(); else if (valid) read.compare(options, true); }}/>
-          {read.diff.value ? <div className={!read.fresh || read.diff.stale ? 'stale-content' : ''}><DiffView diff={read.diff.value} observedAt={read.diff.stamp?.finishedAt} positionKey={JSON.stringify([session.repository.worktreeId, 'comparison', read.mode, read.diff.value.base, read.diff.value.target, read.diff.value.entry.id])}/></div> : !read.diff.loading && <div className="empty-state"><h2>{t('未选择文件')}</h2></div>}
+          {read.diff.value ? <div className={!read.fresh || read.diff.stale ? 'stale-content' : ''}><DiffView diff={read.diff.value} actions={onFileHistory && <button className="file-history-action" disabled={!read.fresh || read.diff.stale || read.diff.loading} onClick={() => onFileHistory(read.diff.value!)}>{t('文件历史')}</button>} observedAt={read.diff.stamp?.finishedAt} positionKey={JSON.stringify([session.repository.worktreeId, 'comparison', read.mode, read.diff.value.base, read.diff.value.target, read.diff.value.entry.id])}/></div> : !read.diff.loading && <div className="empty-state"><h2>{t('未选择文件')}</h2></div>}
         </section>
       </main>
     </> : result && content !== 'files' ? <section className="comparison-history" aria-label={t('{0} 独有提交', [content.toUpperCase()])}>

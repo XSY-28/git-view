@@ -3,9 +3,10 @@ import { QueryError, queryKey, toAppError, overviewSchema, type ApiRequest, type
 import { explain } from './explanations';
 import { COMPARISON_LIMITS, historyFilterKey } from '@git-view/contracts';
 import { readNavigation } from './navigation';
+import { InvestigationSession } from './investigation';
 export { explain } from './explanations';
 
-type State = { session: RepositorySession; overview?: RawOverview; commits: Map<string, CommitDetail>; comparisons: Map<string, RevisionComparison>; historyCursors: Map<string, string>; active: Map<string, { id: string; controller: AbortController }> };
+type State = { session: RepositorySession; overview?: RawOverview; commits: Map<string, CommitDetail>; comparisons: Map<string, RevisionComparison>; investigation: InvestigationSession; historyCursors: Map<string, string>; active: Map<string, { id: string; controller: AbortController }> };
 
 /** At most two semantic Git reads run per worktree, including different UI sessions. */
 class ReadQueue {
@@ -35,7 +36,7 @@ export function createRepositoryQueries(adapter: GitAdapter) {
     for (const state of sessions.values()) {
       if (state.session.repository.worktreeId !== worktreeId) continue;
       state.active.forEach(active => active.controller.abort());
-      state.active.clear(); state.overview = undefined; state.commits.clear(); state.comparisons.clear(); state.historyCursors.clear();
+      state.active.clear(); state.overview = undefined; state.commits.clear(); state.comparisons.clear(); state.investigation.clear(); state.historyCursors.clear();
     }
   }
   function suspendWorktree(worktreeId: string) {
@@ -67,7 +68,7 @@ export function createRepositoryQueries(adapter: GitAdapter) {
   async function open(path: string, signal?: AbortSignal): Promise<RepositorySession> {
     const repository = await adapter.resolveRepository(path, signal);
     const session = { sessionId: randomUUID(), generation: 0, repository };
-    sessions.set(session.sessionId, { session, commits: new Map(), comparisons: new Map(), historyCursors: new Map(), active: new Map() });
+    sessions.set(session.sessionId, { session, commits: new Map(), comparisons: new Map(), investigation: new InvestigationSession(), historyCursors: new Map(), active: new Map() });
     if (!queues.has(repository.worktreeId)) queues.set(repository.worktreeId, new ReadQueue());
     return session;
   }
@@ -86,7 +87,7 @@ export function createRepositoryQueries(adapter: GitAdapter) {
       if (request.generation < state.session.generation) throw new QueryError('STALE_RESULT', '这次读取已被更新的刷新取代。', true);
       if (request.generation > state.session.generation) {
         state.active.forEach(active => active.controller.abort());
-        state.active.clear(); state.overview = undefined; state.commits.clear(); state.comparisons.clear(); state.historyCursors.clear();
+        state.active.clear(); state.overview = undefined; state.commits.clear(); state.comparisons.clear(); state.investigation.clear(); state.historyCursors.clear();
         state.session = { ...state.session, generation: request.generation };
       }
       state.active.get(key)?.controller.abort();
@@ -97,6 +98,8 @@ export function createRepositoryQueries(adapter: GitAdapter) {
       const data = await queues.get(state.session.repository.worktreeId)!.run(readSignal, async () => {
         const repository = captured.session.repository;
         switch (request.action) {
+          case 'search': case 'file-history': case 'file-history-change': case 'blame': case 'records': case 'stash-detail': case 'stash-change':
+            return captured.investigation.execute(adapter, repository, request, readSignal, () => !readSignal.aborted && captured.session.generation === request.generation);
           case 'navigation': return readNavigation(adapter, repository, readSignal);
           case 'overview': {
             const overview = await adapter.readOverview(repository, readSignal);

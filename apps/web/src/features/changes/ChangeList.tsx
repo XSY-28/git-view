@@ -15,6 +15,8 @@ const groups = [
 const kindLabel: Record<string, string> = { M: '修改', A: '新增', D: '删除', R: '重命名', C: '复制', T: '类型变化', U: '冲突', '?': '新文件' };
 
 type ChangeListProps = {
+  label?: string;
+  filterLabel?: string;
   filter: string;
   disabled?: boolean;
   onFilter: (value: string) => void;
@@ -61,9 +63,9 @@ export function ChangeList(props: ChangeListProps) {
     return <div key={entry.id} className="file-operation-row"><label className="file-operation-checkbox" title={`${t(operationLabel(kind))} ${entry.path}`}><input type="checkbox" checked={checked} disabled={disabled} aria-label={t('选择{0} {1}', [t(operationLabel(kind)), entry.path])} onChange={() => operations.toggle(entry, kind)}/></label>{button}</div>;
   }
 
-  return <div className={`change-list change-list-${props.scope}`} ref={root} aria-label={props.scope === 'changes' ? t('当前改动文件') : t(props.scope === 'comparison' ? '比较变化文件' : '提交变化文件')}>
+  return <div className={`change-list change-list-${props.scope}`} ref={root} aria-label={props.label ?? (props.scope === 'changes' ? t('当前改动文件') : t(props.scope === 'comparison' ? '比较变化文件' : '提交变化文件'))}>
     <div className="change-list-filter">
-      <input type="search" disabled={props.disabled} value={props.filter} onChange={event => props.onFilter(event.target.value)} placeholder={t("筛选文件")} aria-label={props.scope === 'changes' ? t('筛选当前改动文件') : t(props.scope === 'comparison' ? '筛选比较文件' : '筛选提交文件')}/>
+      <input type="search" disabled={props.disabled} value={props.filter} onChange={event => props.onFilter(event.target.value)} placeholder={t("筛选文件")} aria-label={props.filterLabel ?? (props.scope === 'changes' ? t('筛选当前改动文件') : t(props.scope === 'comparison' ? '筛选比较文件' : '筛选提交文件'))}/>
       {filtering && <span aria-live="polite">{visible.length} / {entries.length}</span>}
     </div>
     {props.scope === 'changes' && props.actions}

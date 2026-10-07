@@ -1,60 +1,21 @@
-import { readFile } from 'node:fs/promises';
-import path from 'node:path';
 import { randomUUID } from 'node:crypto';
-import { COMPARISON_LIMITS, comparisonOptionsSchema, type ComparisonOptions, type ComparisonPageOptions, type ComparisonMode, type ComparisonCommits, type RevisionComparison, type RevisionEndpoint, type RepositoryIdentity, type ChangeEntry, type CommitNode } from '@git-view/contracts';
-import { GitReadError, runGit, type RunOptions } from './runner.js';
-import { hash, parseRawDiff, splitNul, utf8 } from './parse.js';
-import { createBlobVerifier, diffFlags, rawFlags, requireEntry, renderPreview } from './diff.js';
+import { COMPARISON_LIMITS, comparisonOptionsSchema, type ComparisonOptions, type ComparisonPageOptions, type ComparisonMode, type ComparisonCommits, type RevisionComparison, type RepositoryIdentity, type ChangeEntry, type CommitNode } from '@git-view/contracts';
+import { GitReadError } from './runner.js';
+import { createImmutableReader } from './immutable.js';
+import { splitNul, utf8 } from './parse.js';
 import type { ReadLimits } from './limits.js';
 
 type Page = { comparisonId: string; worktreeId: string; side: ComparisonPageOptions['side']; historyKey: string; offset: number };
-async function optionalRead(file: string) {
-  try { return await readFile(file); } catch (error) { if ((error as NodeJS.ErrnoException).code === 'ENOENT') return Buffer.alloc(0); throw error; }
-}
-
 /** Snapshot only stored objects. Mutable refs are resolved once, never used for pages or file reads. */
 export function createComparisonReader(limits: ReadLimits, rejectPromisor: (root: string, gitDir: string, signal?: AbortSignal) => Promise<void>) {
   const cursors = new Map<string, Page>();
-  const run = (repo: RepositoryIdentity, args: string[], options: RunOptions = {}) => runGit(repo.worktreeRoot, args, { timeoutMs: limits.timeoutMs, maxOutputBytes: limits.maxOutputBytes, stderrPreviewChars: limits.stderrPreviewChars, ...options, noReplaceObjects: true });
-  const verifyBlobs = createBlobVerifier(run);
-
-  async function historyState(repo: RepositoryIdentity) {
-    const shallow = await optionalRead(path.join(repo.commonGitDir, 'shallow'));
-    // Legacy grafts also alter ancestry of an OID. There is no reliable per-command
-    // equivalent of GIT_NO_REPLACE_OBJECTS for grafts, so do not assert a fixed graph.
-    if ((await optionalRead(path.join(repo.commonGitDir, 'info/grafts'))).toString('utf8').split('\n').some(line => line.trim() && !line.trim().startsWith('#'))) throw new GitReadError('UNSUPPORTED_REPOSITORY', '仓库使用 grafts 改写历史，无法可靠比较固定提交。');
-    return { key: hash(shallow), shallow: new Set(shallow.toString('ascii').trim().split('\n').filter(Boolean)) };
-  }
-  async function resolve(repo: RepositoryIdentity, selector: RevisionEndpoint, signal?: AbortSignal) {
-    const value = selector.kind === 'head' ? 'HEAD' : selector.kind === 'ref' ? selector.name : selector.oid;
-    if (selector.kind === 'commit') {
-      // rev-parse <short> can prefer a same-named branch. An object prefix must
-      // stay an object prefix, with ambiguity checked across all object types.
-      const candidates = (await run(repo, ['rev-parse', `--disambiguate=${selector.oid.toLowerCase()}`], { signal })).toString('ascii').trim().split('\n').filter(Boolean);
-      if (candidates.length !== 1) throw new GitReadError('OBJECT_UNAVAILABLE', '提交 ID 不存在或前缀不唯一，请提供更完整的提交 ID。');
-      const oid = candidates[0]!;
-      const type = (await run(repo, ['cat-file', '-t', oid], { signal })).toString('ascii').trim();
-      if (type !== 'commit') throw new GitReadError('OBJECT_UNAVAILABLE', '提交 ID 指向的对象不是提交。');
-      return { selector, label: value, oid };
-    }
-    if (selector.kind === 'ref') {
-      const normalized = await run(repo, ['check-ref-format', '--normalize', selector.name], { signal, allowedExitCodes: [0, 1] });
-      if (normalized.toString('utf8').trim() !== selector.name) throw new GitReadError('INVALID_REQUEST', '比较端点无效，请选择 HEAD、完整引用或提交 ID。');
-    }
-    const bytes = await run(repo, ['rev-parse', '--verify', '--quiet', '--end-of-options', `${value}^{commit}`], { signal, allowedExitCodes: [0, 1] });
-    const oid = bytes.toString('ascii').trim();
-    if (!/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/.test(oid)) throw new GitReadError('OBJECT_UNAVAILABLE', '比较端点无法解析为本机提交，请检查引用或提交 ID。');
-    return { selector, label: value, oid };
-  }
+  const { run, historyState, resolve, trees: readTrees, treeChange } = createImmutableReader(limits, rejectPromisor);
   async function assertSnapshot(repo: RepositoryIdentity, comparison: RevisionComparison, signal?: AbortSignal) {
     if (comparison.worktreeId !== repo.worktreeId) throw new GitReadError('STALE_RESULT', '比较结果属于其他工作区，请重新比较。', true);
     await rejectPromisor(repo.worktreeRoot, repo.commonGitDir, signal);
     if ((await historyState(repo)).key !== comparison.historyKey) throw new GitReadError('STALE_RESULT', '本机历史边界已经变化，请重新比较。', true);
   }
-  async function trees(repo: RepositoryIdentity, base: string, target: string, signal?: AbortSignal) {
-    const changes = parseRawDiff(await run(repo, ['diff-tree', '--no-commit-id', '-r', ...rawFlags, base, target, '--'], { signal }), 'revision-pair');
-    return { base, target, changes };
-  }
+  const trees = async (repo: RepositoryIdentity, base: string, target: string, signal?: AbortSignal) => ({ ...await readTrees(repo, base, target, signal), base });
   async function compareRevisions(repo: RepositoryIdentity, options: ComparisonOptions, signal?: AbortSignal): Promise<RevisionComparison> {
     if (!comparisonOptionsSchema.safeParse(options).success) throw new GitReadError('INVALID_REQUEST', '比较端点无效，请选择 HEAD、完整引用或提交 ID。');
     await rejectPromisor(repo.worktreeRoot, repo.commonGitDir, signal);
@@ -119,11 +80,9 @@ export function createComparisonReader(limits: ReadLimits, rejectPromisor: (root
     const tree = mode === 'endpoints' ? comparison.endpoints : mode === 'merge-base' ? comparison.fromMergeBase : undefined;
     const current = tree?.changes.find(item => item.id === entry.id);
     if (!tree || !current) throw new GitReadError('STALE_RESULT', '文件不属于此比较基准，请重新选择。', true);
-    const paths = requireEntry(current);
-    await verifyBlobs(repo, [tree.base, tree.target], paths, false, signal);
-    const bytes = await run(repo, ['diff-tree', '--no-commit-id', '-r', '-p', ...diffFlags, '--find-renames', tree.base, tree.target, '--', ...paths], { signal });
+    const result = await treeChange(repo, tree, current, signal);
     await assertSnapshot(repo, comparison, signal);
-    return renderPreview(current, bytes, tree.base, tree.target, limits);
+    return result;
   }
   return { compareRevisions, listComparisonCommits, readComparisonChange };
 }

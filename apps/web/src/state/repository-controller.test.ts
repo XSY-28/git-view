@@ -16,6 +16,14 @@ describe('refresh scheduling', () => {
 });
 
 describe('worktree view memory', () => {
+  it('preserves investigation inputs through view saves and isolates linked worktrees', () => {
+    const controller = new RepositoryController(); controller.activate('main-worktree');
+    const options = { tab: 'file' as const, search: { scope: 'all' as const, field: 'subject' as const, term: 'fix' }, file: { endpoint: { kind: 'commit' as const, oid: 'a'.repeat(40) }, path: '原始 文件.ts' }, reflogRef: 'refs/heads/topic' };
+    controller.investigation(options); controller.save({ view: 'investigation', scope: 'head', allHistoryOrder: 'date' });
+    controller.save({ view: 'history', scope: 'head', allHistoryOrder: 'date' });
+    controller.activate('linked-worktree'); expect(controller.investigation()).toEqual({ tab: 'search' });
+    controller.activate('main-worktree'); expect(controller.investigation()).toEqual(options);
+  });
   it('keeps comparison operands through normal view saves and isolates linked worktrees', () => {
     const controller = new RepositoryController(); controller.activate('main-worktree');
     const options = { a: { kind: 'head' as const }, b: { kind: 'ref' as const, name: 'refs/heads/topic' } };

@@ -128,12 +128,12 @@
 
 ### 2B-01：历史调查、分支比较与只读补充视图
 
-**文件：** 新增 `packages/core/src/investigation.ts`、`packages/git-cli/src/history.ts`、`apps/web/src/features/history/FileHistory.tsx`、`BranchComparison.tsx`、`RepositoryRecords.tsx`；扩展 contracts；新增 `tests/integration/investigation.test.ts`、`tests/e2e/investigation.spec.ts`。
+**已落地文件：** `packages/core/src/investigation.ts`、`packages/contracts/src/investigation.ts`、`packages/git-cli/src/immutable.ts` 与 `investigation-*` 读取模块、`apps/web/src/features/investigation/`；复用版本比较、RevisionPicker 与差异组件。测试见 `tests/integration/investigation.test.ts`、`tests/e2e/investigation.spec.ts` 和 core/UI 状态测试；见[第五批验证](../../verification/2026-10-07-history-investigation.md)。
 
-- [ ] 支持按提交标题、作者、完整/短哈希、文件路径查询；使用固定 tips 分页，不因翻页时分支移动而混合历史。
-- [ ] 文件历史首版跟踪单一路径的普通重命名；合并历史中的歧义显示范围，不承诺自动追踪所有复制/改名。blame 针对选定不可变提交及正确一侧的行号，不向未提交新增行伪造作者。
+- [x] 支持按提交标题、作者、完整/短哈希、文件路径查询；使用固定 tips 分页，不因翻页时分支移动而混合历史。
+- [x] 文件历史首版跟踪单一路径的普通重命名；第一父链范围明确，不承诺自动追踪所有合并来源或复制。blame 针对选定不可变提交及正确一侧的行号，不向未提交新增行伪造作者。
 - [x] 分支比较同时给各自独有提交、可确定的共同祖先和明确标注的内容比较。A/B 先解析成固定 OID；端点树比较与共同祖先→目标分支比较分开，多个 merge-base 或历史缺失时不随意挑一个制造确定结论。第四批实际模块为 `contracts/comparison.ts`、`git-cli/comparison.ts`、`features/comparison/`，复用 core；见[第四批验证](../../verification/2026-10-06-revision-comparison.md)。
-- [ ] 展示 stash/reflog 的本地记录与详情；stash 默认只比较其工作区快照和第一父基准，其他父/未跟踪内容须独立标明。reflog 不等同于完整命令审计，过期/不存在均有解释。
+- [x] 展示 stash/reflog 的本地记录与详情；stash 默认只比较其工作区快照和第一父基准，暂存与未跟踪快照独立标明。reflog 保留本机原始 old/new OID，不等同于完整命令审计，过期/不存在/对象不可用均有解释。首版 files ref storage，其他存储格式明确拒绝。
 - [ ] 显示相对本地记录上游的 ahead/behind；没有上游或对象缺失不能显示为 0，不主动 fetch。
 
 **验收：** 分叉、merge、重命名、浅历史、分支移动夹具能核对；选分支只改变查询；blame 行号随比较一侧正确对应；stash/reflog 查看前后 refs/index/工作文件无变化；搜索结果过期时不错误跳转。

@@ -1,13 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import { randomUUID } from 'node:crypto';
-import { QueryError, type GitAdapter, type Navigation, type RawOverview, type RepositoryIdentity, type RevisionComparison } from '@git-view/contracts';
+import { QueryError, type FileHistoryPage, type GitAdapter, type Navigation, type RawOverview, type RepositoryIdentity, type RevisionComparison } from '@git-view/contracts';
 import { createRepositoryQueries, explain } from './index';
 
 const repository: RepositoryIdentity = { repositoryId: 'repo', worktreeId: 'tree', worktreeRoot: '/tmp/example', gitDir: '/tmp/example/.git', commonGitDir: '/tmp/example/.git' };
 const raw: RawOverview = { repository, head: { kind: 'branch', branch: 'main', oid: 'opaque-id' }, changes: { staged: [{ id: 'stage', rawPath: 'YQ==', path: 'a', kind: 'M', comparison: 'head-index', supported: true }], unstaged: [{ id: 'work', rawPath: 'YQ==', path: 'a', kind: 'M', comparison: 'index-worktree', supported: true }], untracked: [], conflicts: [] }, operation: [], complete: true, warnings: [], fingerprint: 'first' };
 function fake(read: GitAdapter['readOverview']): GitAdapter {
   const unavailable = async (): Promise<never> => { throw new Error('unused adapter method'); };
-  return { resolveRepository: async () => repository, readOverview: read, listNavigation: unavailable, readChange: unavailable, listHistory: unavailable, readCommit: unavailable, readCommitChange: unavailable, compareRevisions: unavailable, listComparisonCommits: unavailable, readComparisonChange: unavailable };
+  return { resolveRepository: async () => repository, readOverview: read, listNavigation: unavailable, readChange: unavailable, listHistory: unavailable, readCommit: unavailable, readCommitChange: unavailable, compareRevisions: unavailable, listComparisonCommits: unavailable, readComparisonChange: unavailable, searchCommits: unavailable, listFileHistory: unavailable, readFileHistoryChange: unavailable, blameFileHistory: unavailable, listRecords: unavailable, readStash: unavailable, readStashChange: unavailable };
 }
 const deferred = <T>() => { let resolve!: (value: T) => void; let reject!: (reason: unknown) => void; const promise = new Promise<T>((yes, no) => { resolve = yes; reject = no; }); return { promise, resolve, reject }; };
 
@@ -31,6 +31,21 @@ describe('deterministic evidence rules', () => {
 });
 
 describe('repository observation coordinator', () => {
+  it.each(['success', 'failure'])('late file history %s cannot authorize details after a newer refresh', async outcome => {
+    const old = deferred<FileHistoryPage>(); const adapter = fake(async () => raw); let calls = 0;
+    const page = (): FileHistoryPage => ({ snapshotId: randomUUID(), worktreeId: repository.worktreeId, observedAt: new Date().toISOString(), historyKey: 'history', tipOid: 'a'.repeat(40), path: 'a', firstParent: true, complete: true, warnings: [], entries: [{ entryId: 'entry', commit: { oid: 'a'.repeat(40), parents: [], author: 'Author', authoredAt: new Date().toISOString(), subject: 'Subject', refs: [], boundary: false }, change: raw.changes.staged[0]!, base: null }] });
+    const prior = page(); const latest = page();
+    adapter.listFileHistory = async () => ++calls === 1 ? old.promise : latest;
+    adapter.readFileHistoryChange = async () => ({ entry: latest.entries[0]!.change, comparison: 'revision-pair', text: 'current', format: 'diff', complete: true, base: 'empty', target: latest.tipOid });
+    const queries = createRepositoryQueries(adapter); const session = await queries.open('/fixture');
+    const request = { schemaVersion: 1 as const, action: 'file-history' as const, endpoint: { kind: 'head' as const }, path: 'a', sessionId: session.sessionId, generation: 0, requestId: 'old' };
+    const pending = queries.execute(request); expect((await queries.execute({ ...request, generation: 1, requestId: 'new' })).ok).toBe(true);
+    if (outcome === 'success') old.resolve(prior); else old.reject(new QueryError('TIMEOUT', 'obsolete file history failure'));
+    expect((await pending).ok).toBe(false);
+    const detail = { schemaVersion: 1 as const, action: 'file-history-change' as const, sessionId: session.sessionId, generation: 1, requestId: 'detail', entryId: 'entry' };
+    const obsolete = await queries.execute({ ...detail, snapshotId: prior.snapshotId }); expect(!obsolete.ok && obsolete.error.code).toBe('STALE_RESULT');
+    expect((await queries.execute({ ...detail, snapshotId: latest.snapshotId })).ok).toBe(true); queries.close();
+  });
   it.each(['success', 'failure'])('late comparison %s cannot be cached after a newer refresh', async outcome => {
     const old = deferred<RevisionComparison>(); const adapter = fake(async () => raw); let calls = 0;
     const comparison = (): RevisionComparison => ({ comparisonId: randomUUID(), worktreeId: repository.worktreeId, observedAt: new Date().toISOString(), historyKey: 'history', a: { selector: { kind: 'head' }, label: 'HEAD', oid: 'a'.repeat(40) }, b: { selector: { kind: 'head' }, label: 'HEAD', oid: 'b'.repeat(40) }, mergeBases: { status: 'none', oids: [] }, exclusive: { a: 1, b: 1, complete: true }, endpoints: { base: 'a'.repeat(40), target: 'b'.repeat(40), changes: [] }, warnings: [] });

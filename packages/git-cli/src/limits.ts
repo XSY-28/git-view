@@ -7,6 +7,7 @@ export const DEFAULT_READ_LIMITS = Object.freeze({
   previewLines: 10_000,
   historyPageSize: 200,
   historyCursorCount: 100,
+  investigationCommitLimit: 20_000,
   metadataBatchSize: 64,
   consistencyRetries: 2,
 });

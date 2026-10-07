@@ -2,7 +2,7 @@
 
 [![Source checks](https://github.com/XSY-28/git-view/actions/workflows/check.yml/badge.svg)](https://github.com/XSY-28/git-view/actions/workflows/check.yml) · [MIT License](LICENSE)
 
-Git View 是一个本地 Git 图形工具。它把 HEAD、暂存区和工作区的比较分开显示，也能沿提交关系查看历史、比较分支或提交。你可以在同一窗口里读差异、按文件暂存、提交，以及创建或切换本地分支；写入前先预览、再确认。
+Git View 是一个本地 Git 图形工具。它把 HEAD、暂存区和工作区的比较分开显示，也能比较分支或提交、搜索历史、查看文件和行来源，以及调查 stash/reflog。你可以在同一窗口里读差异、按文件暂存、提交，以及创建或切换本地分支；写入前先预览、再确认。
 
 例如，同一个文件已经暂存后又被修改，**Changes（当前改动）** 会分别显示“已暂存”和“未暂存”的差异。切到 **History（提交历史）**，点击一个提交，就能查看它相对父提交改了哪些文件。选择侧栏的分支或标签只改变历史范围，不会切换当前分支。
 
@@ -99,12 +99,39 @@ A/B 也可以选择 HEAD、标签、已有远程跟踪引用或完整/短提交 
 
 只有能确定唯一共同祖先时，才启用共同祖先 → B 模式。浅历史会明确标注计数不完整；没有共同祖先或存在多个共同祖先时，不会任意选择一个基准，但仍可比较本机已有的 A/B 提交树。该视图只读取已存储的 Git 对象，不把工作区改动混入比较，也不联网获取缺失对象。设计与验证范围见[比较设计](docs/decisions/0003-revision-comparison.md)和[版本比较验证](docs/verification/2026-10-06-revision-comparison.md)。
 
+## 搜索和调查历史
+
+想找到一次改动，再追踪某个文件或某一行的来源，可以沿下面的流程查看：
+
+1. 切到 **Investigate（历史调查）** 的 **Search commits（提交搜索）**，选择 HEAD、全部引用或一个分支/标签作为范围，再选择标题、作者、提交 ID 或文件路径字段，输入内容并点击 **Search（搜索）**。
+2. 点击搜索结果，打开该提交的文件差异；点击 **File history（文件历史）**，继续查看选定版本中该文件的演变。也可以直接在调查页选择版本、填写仓库内相对路径并点击 **View history（查看历史）**。
+3. 选择一条文件历史记录，查看它相对第一父提交的差异。普通重命名会保留当时的新旧路径。
+4. 点击 **Blame before / Blame after（比较前/后行来源）**，查看对应已提交文件的完整内容、行号及来源提交；点击行旁的提交 ID 可打开该提交详情。
+
+标题和作者姓名/邮箱按字面内容忽略大小写搜索，提交 ID 支持至少四位的前缀。路径要求精确的仓库内相对路径，不按通配符匹配，也不自动搜索重命名前的路径；需要追踪旧名时使用文件历史。搜索结果与分页使用当次固定的历史端点，刷新后重新读取。
+
+![文件历史中的重命名记录与比较后行来源](docs/verification/screenshots/history-investigation-native.png)
+
+图中前三行分别来自不同提交。行来源描述 Git 记录的最后一次行改动，不推断整段逻辑的作者；未提交的工作内容不会混入结果。文件历史沿第一父链追踪普通重命名，行来源则使用对应版本的 Git 祖先记录，两者的范围不同。
+
+在同一调查页还可以查看 **stash** 和 **reflog**。选中 stash 后，三个快照分别回答：
+
+| 快照 | 比较内容 |
+| --- | --- |
+| **Working tree snapshot（工作区快照）** | 保存前的基准提交 → stash 中的已跟踪工作文件 |
+| **Index snapshot（暂存区快照）** | 保存前的基准提交 → 当时的暂存区 |
+| **Untracked snapshot（未跟踪快照）** | 空树 → 保存的未跟踪文件；仅在该 stash 包含此快照时提供 |
+
+默认查看工作区快照。查看过程不会恢复或删除 stash。reflog 显示本机保留的引用变化、操作者和时间，可打开新提交或比较 old → new；序号属于显示的观测时间，刷新会重新读取。缺失对象会明确提示，不会用工作文件替代。
+
+默认每页 200 条、最多调查 20,000 条候选记录；浅历史及读取上限会明确标注。文件历史不覆盖所有合并来源或复制历史，reflog 仅支持 files 引用存储，也不是完整命令审计。设计和实际验证范围见[历史调查设计](docs/decisions/0004-history-investigation.md)与[第五批验证](docs/verification/2026-10-07-history-investigation.md)。
+
 ## 使用前需要知道的限制
 
 | 平台 | 当前验证与支持范围 |
 | --- | --- |
-| macOS Apple silicon | 查看、版本比较、暂存、提交、本地分支及安装副本已有实机验证；CI 覆盖源码、Rust 宿主、安装流程与浏览器回归。 |
-| Windows | CI 检查核心 Git 读取、stdio 与桌面宿主；写入未开放，版本比较的原生界面与安装尚未实机验证。 |
+| macOS Apple silicon | 查看、版本比较、历史调查、暂存、提交、本地分支及安装副本已有实机验证；CI 覆盖源码、Rust 宿主、安装流程与浏览器回归。 |
+| Windows | CI 检查核心 Git 读取、stdio 与桌面宿主；写入未开放，版本比较、历史调查的原生界面与安装尚未实机验证。 |
 
 - 暂不提供 push、merge、rebase 或历史重写。远程跟踪引用来自本地仓库，不会自动获取远端更新。
 - 二进制、非 UTF-8、超过 1 MiB 或 10,000 行的内容不展开文本预览。没有文本预览不代表文件没有变化。
@@ -145,7 +172,7 @@ pnpm test:e2e                  # 界面回归
 pnpm test:install-desktop      # macOS 安装与恢复测试
 ```
 
-测试写入使用新建的临时仓库。源码检查和手动桌面验收各有范围，CI 通过不等于所有平台的原生界面已验收。模块职责见[实现基线](docs/decisions/0001-implementation-baseline.md)、[桌面架构](docs/decisions/0002-desktop-host.md)和[版本比较设计](docs/decisions/0003-revision-comparison.md)，语言默认值与持久化行为见[语言验证](docs/verification/2026-10-06-language.md)。
+测试写入使用新建的临时仓库。源码检查和手动桌面验收各有范围，CI 通过不等于所有平台的原生界面已验收。模块职责见[实现基线](docs/decisions/0001-implementation-baseline.md)、[桌面架构](docs/decisions/0002-desktop-host.md)、[版本比较设计](docs/decisions/0003-revision-comparison.md)和[历史调查设计](docs/decisions/0004-history-investigation.md)，语言默认值与持久化行为见[语言验证](docs/verification/2026-10-06-language.md)。
 
 欢迎通过 [Issues](https://github.com/XSY-28/git-view/issues) 报告问题或提交 Pull Request。请提供平台、版本、复现步骤和预期结果，并移除日志或截图中的私人信息。
 

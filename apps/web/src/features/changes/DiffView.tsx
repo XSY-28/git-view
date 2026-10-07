@@ -1,5 +1,5 @@
 import { useI18n } from '../../i18n/index';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import type { Diff } from '@git-view/contracts';
 import { comparisonObjects, objectLabel, presentDiff } from './diff-presentation';
 import { alignDiffLines, SideBySideDiff } from '../comparison/SideBySideDiff';
@@ -7,7 +7,7 @@ import { readPreferences, rememberPosition, writePreferences, type DiffMode } fr
 
 import './diff-view.css';
 
-export function DiffView({ diff, observedAt, positionKey }: { diff: Diff; observedAt?: string; positionKey: string }) {
+export function DiffView({ diff, observedAt, positionKey, actions }: { diff: Diff; observedAt?: string; positionKey: string; actions?: ReactNode }) {
   const { t, locale } = useI18n();
   const [preferences, setPreferences] = useState(readPreferences);
   const [rawOpen, setRawOpen] = useState(false);
@@ -39,6 +39,7 @@ export function DiffView({ diff, observedAt, positionKey }: { diff: Diff; observ
   const incompleteReason = !diff.complete && diff.format !== 'unavailable' ? `${diff.reason ? `${diff.reason} ` : ''}仅显示已获取内容。` : diff.reason;
   return <div className={`diff-view ${preferences.wrap ? 'wrap-lines' : 'nowrap-lines'}`} data-diff-mode={mode}>
     <div className="diff-header"><h2 title={diff.entry.path}>{diff.entry.path}</h2><div className="diff-count">{isPatch ? <>{!diff.complete && <span>{t("已获取")}</span>}<span className="text-add">+{additions}</span><span className="text-remove">−{deletions}</span></> : <span className="muted">{diff.format === 'text' ? t('文本预览') : t('未展开')}</span>}</div></div>
+    {actions && <div className="diff-file-actions">{actions}</div>}
     <div className="diff-baseline">
       {objects.before && <><span title={objects.before.value}>{objectLabel({ ...objects.before, label: t(objects.before.label) })}</span><span aria-hidden="true">→</span></>}
       <span title={objects.after.value}>{objectLabel({ ...objects.after, label: t(objects.after.label) })}</span>

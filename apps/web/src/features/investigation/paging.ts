@@ -1,0 +1,5 @@
+import { type FileHistoryPage, type RecordPage, type SearchPage } from '@git-view/contracts';
+function assertPage(previous: { snapshotId: string }, next: { snapshotId: string }) { if (previous.snapshotId !== next.snapshotId) throw new Error('读取结果与当前请求身份不匹配，结果未被采用。'); }
+export function mergeSearch(previous: SearchPage, next: SearchPage): SearchPage { assertPage(previous, next); const seen = new Set(previous.commits.map(item => item.oid)); return { ...next, commits: [...previous.commits, ...next.commits.filter(item => !seen.has(item.oid))] }; }
+export function mergeFiles(previous: FileHistoryPage, next: FileHistoryPage): FileHistoryPage { assertPage(previous, next); const seen = new Set(previous.entries.map(item => item.entryId)); return { ...next, entries: [...previous.entries, ...next.entries.filter(item => !seen.has(item.entryId))] }; }
+export function mergeRecords(previous: RecordPage, next: RecordPage): RecordPage { assertPage(previous, next); const seen = new Set(previous.entries.map(item => item.recordId)); return { ...next, entries: [...previous.entries, ...next.entries.filter(item => !seen.has(item.recordId))] }; }

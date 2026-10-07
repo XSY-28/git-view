@@ -67,8 +67,8 @@ describe('comparison operand labels', () => {
     const commit = comparisonObjects(patch('', { comparison: 'commit-parent', base: 'a'.repeat(40), target: 'b'.repeat(40) }));
     expect(objectLabel(commit.before!)).toBe('父提交 aaaaaaaaaa'); expect(objectLabel(commit.after)).toBe('所选提交 bbbbbbbbbb');
   });
-  it('labels the empty tree for both an initial commit and an unborn staged comparison', () => {
-    for (const comparison of ['commit-parent', 'head-index'] as const) {
+  it('labels the empty tree for initial commits, unborn staged comparisons and untracked stash snapshots', () => {
+    for (const comparison of ['commit-parent', 'head-index', 'revision-pair'] as const) {
       const objects = comparisonObjects(patch('', { comparison, base: '空树（首次提交）' }));
       expect(objects.before?.label).toBe('空树'); expect(objectLabel(objects.before!)).toBe('空树');
     }

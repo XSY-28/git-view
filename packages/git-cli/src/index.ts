@@ -10,6 +10,8 @@ import { createNavigationReader, readRefs } from './navigation.js';
 import { readLimits, type ReadLimits } from './limits.js';
 import { createBlobVerifier, diffFlags, rawFlags, requireEntry, renderPreview } from './diff.js';
 import { createComparisonReader } from './comparison.js';
+import { createInvestigationReader } from './investigation.js';
+import { createImmutableReader } from './immutable.js';
 export { DEFAULT_READ_LIMITS, type ReadLimits } from './limits.js';
 
 export { GitReadError } from './runner.js';
@@ -30,6 +32,7 @@ export function createGitAdapter(options: { limits?: Partial<ReadLimits> } = {})
   const executeGit = (cwd: string, args: string[], options: RunOptions = {}) => runGit(cwd, args, { timeoutMs: limits.timeoutMs, maxOutputBytes: limits.maxOutputBytes, stderrPreviewChars: limits.stderrPreviewChars, ...options });
   const cursors = new Map<string, PageState>();
   const run = (repository: RepositoryIdentity, args: string[], signal?: AbortSignal) => executeGit(repository.worktreeRoot, args, { signal });
+  const immutable = createImmutableReader(limits, rejectPromisor);
 
   async function rejectPromisor(root: string, commonGitDir: string, signal?: AbortSignal) {
     const config = await executeGit(root, ['config', '--null', '--get-regexp', '^(extensions\.partialclone|remote\..*\.promisor)$'], { signal, allowedExitCodes: [0, 1] });
@@ -273,27 +276,24 @@ export function createGitAdapter(options: { limits?: Partial<ReadLimits> } = {})
 
   async function readCommit(repository: RepositoryIdentity, oid: string, signal?: AbortSignal): Promise<CommitDetail> {
     await rejectPromisor(repository.worktreeRoot, repository.commonGitDir, signal);
-    requireOid(oid);
-    oid = (await run(repository, ['rev-parse', '--verify', `${oid}^{commit}`], signal)).toString('ascii').trim();
-    const commit = await commitNode(repository, oid, signal);
+    oid = (await immutable.resolve(repository, { kind: 'commit', oid }, signal)).oid;
+    const commit = await immutable.commitNode(repository, oid, signal);
     const refs = await refSnapshot(repository, signal);
     commit.refs = refs.get(oid) ?? [];
     const base = commit.parents[0] ?? null;
     if (commit.boundary && base) throw new GitReadError('OBJECT_UNAVAILABLE', '此提交位于浅克隆边界，父提交不在本机；未联网获取，无法可靠比较。');
-    const bytes = await run(repository, ['diff-tree', '--no-commit-id', '-r', ...rawFlags, ...(base ? [base, oid] : ['--root', oid]), '--'], signal);
-    return { commit, base, comparisonLabel: base ? commit.parents.length > 1 ? '相对第一父提交（不是合并全部变化）' : '相对父提交' : '相对空树（首次提交）', changes: parseRawDiff(bytes, 'commit-parent') };
+    const tree = await immutable.trees(repository, base, oid, signal);
+    return { commit, base, comparisonLabel: base ? commit.parents.length > 1 ? '相对第一父提交（不是合并全部变化）' : '相对父提交' : '相对空树（首次提交）', changes: tree.changes.map(entry => ({ ...entry, comparison: 'commit-parent' })) };
   }
   async function readCommitChange(repository: RepositoryIdentity, oid: string, entry: ChangeEntry, signal?: AbortSignal): Promise<Diff> {
     const detail = await readCommit(repository, oid, signal);
     oid = detail.commit.oid;
     const current = detail.changes.find((candidate) => candidate.id === entry.id);
     if (!current) throw new GitReadError('STALE_RESULT', '该文件不属于所选提交的比较结果。', true);
-    const paths = requireEntry(current);
-    await verifyBlobs(repository, detail.base ? [detail.base, oid] : [oid], paths, false, signal);
-    const bytes = await run(repository, ['diff-tree', '--no-commit-id', '-r', '-p', ...diffFlags, ...(detail.base ? [detail.base, oid] : ['--root', oid]), '--', ...paths], signal);
-    return renderPreview(current, bytes, detail.base ?? '空树（首次提交）', oid, limits);
+    return immutable.treeChange(repository, { base: detail.base, target: oid, changes: detail.changes }, current, signal);
   }
   const comparisonReader = createComparisonReader(limits, rejectPromisor);
+  const investigationReader = createInvestigationReader(limits, rejectPromisor, readHead);
   function safeRead<T extends unknown[], R>(read: (...args: T) => Promise<R>, selectedFile = false): (...args: T) => Promise<R> {
     return async (...args) => {
       try { return await read(...args); } catch (error) {
@@ -306,5 +306,5 @@ export function createGitAdapter(options: { limits?: Partial<ReadLimits> } = {})
       }
     };
   }
-  return { compareRevisions: safeRead(comparisonReader.compareRevisions), listComparisonCommits: safeRead(comparisonReader.listComparisonCommits), readComparisonChange: safeRead(comparisonReader.readComparisonChange), resolveRepository: safeRead(resolveRepository), readOverview: safeRead(readOverview), listNavigation: safeRead(listNavigation), readChange: safeRead(readChange, true), listHistory: safeRead(listHistory), readCommit: safeRead(readCommit), readCommitChange: safeRead(readCommitChange, true) };
+  return { searchCommits: safeRead(investigationReader.searchCommits), listFileHistory: safeRead(investigationReader.listFileHistory), readFileHistoryChange: safeRead(investigationReader.readFileHistoryChange), blameFileHistory: safeRead(investigationReader.blameFileHistory), listRecords: safeRead(investigationReader.listRecords), readStash: safeRead(investigationReader.readStash), readStashChange: safeRead(investigationReader.readStashChange), compareRevisions: safeRead(comparisonReader.compareRevisions), listComparisonCommits: safeRead(comparisonReader.listComparisonCommits), readComparisonChange: safeRead(comparisonReader.readComparisonChange), resolveRepository: safeRead(resolveRepository), readOverview: safeRead(readOverview), listNavigation: safeRead(listNavigation), readChange: safeRead(readChange, true), listHistory: safeRead(listHistory), readCommit: safeRead(readCommit), readCommitChange: safeRead(readCommitChange, true) };
 }

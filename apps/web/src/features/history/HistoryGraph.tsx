@@ -68,11 +68,11 @@ export function HistoryGraph({ commits, selected, headOid, onSelect, locateReque
     requestAnimationFrame(() => scroll.current?.querySelector<HTMLButtonElement>(`[data-row="${target}"]`)?.focus({ preventScroll: true }));
   }
   return <div className="history-chart">
-    <div ref={scroll} className="history-scroll" tabIndex={-1} onScroll={event => { setTop(event.currentTarget.scrollTop); onScroll?.(event.currentTarget.scrollTop); }} aria-label={t("提交历史，方向键切换提交")}>
+    <div ref={scroll} data-testid="history-scroll" className="history-scroll" tabIndex={-1} onScroll={event => { setTop(event.currentTarget.scrollTop); onScroll?.(event.currentTarget.scrollTop); }} aria-label={t("提交历史，方向键切换提交")}>
     <div className="history-virtual" style={{ height: commits.length * ROW + (layout.continuations.length ? 36 : 0) }}>
       {commits.slice(start, end).map((commit, offset) => {
         const index = start + offset; const row = layout.rows[index]!;
-        return <button key={commit.oid} data-row={index} className={`commit-row ${selected === commit.oid ? 'selected' : ''}`} style={{ top: index * ROW, height: ROW }} onClick={() => onSelect(commit)} onKeyDown={event => keyboard(event, index)} aria-pressed={selected === commit.oid} title={`${commit.subject}\n${commit.author} · ${new Date(commit.authoredAt).toLocaleString(locale)}\n${commit.oid}${commit.refs.length ? `\n${commit.refs.join(', ')}` : ''}`}>
+        return <button key={commit.oid} data-testid="commit-row" data-row={index} className={`commit-row ${selected === commit.oid ? 'selected' : ''}`} style={{ top: index * ROW, height: ROW }} onClick={() => onSelect(commit)} onKeyDown={event => keyboard(event, index)} aria-pressed={selected === commit.oid} title={`${commit.subject}\n${commit.author} · ${new Date(commit.authoredAt).toLocaleString(locale)}\n${commit.oid}${commit.refs.length ? `\n${commit.refs.join(', ')}` : ''}`}>
           <span className="history-graph-viewport" style={{ width: graphColumnWidth }} onWheel={event => {
             const delta = event.shiftKey && !event.deltaX ? event.deltaY : event.deltaX;
             if (delta) panTo(left + delta);

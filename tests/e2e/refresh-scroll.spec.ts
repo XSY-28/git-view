@@ -60,12 +60,12 @@ async function holdNext(page: Page, action: string) {
 }
 async function scrollState(page: Page, disclosure: string) {
   return page.evaluate(selector => {
-    const code = document.querySelector<HTMLElement>('.code-scroll');
+    const code = document.querySelector<HTMLElement>('[data-testid=diff-scroll]');
     return { pageY: window.scrollY, top: code?.scrollTop, left: code?.scrollLeft, retained: code?.dataset.scrollProbe === 'original', collapsed: !document.querySelector<HTMLDetailsElement>(selector)?.open };
   }, disclosure);
 }
 async function moveDown(page: Page, top: number, left: number, pageDelta = 0) {
-  await page.locator('.code-scroll').evaluate((node, point) => { node.scrollTop = point.top; node.scrollLeft = point.left; }, { top, left });
+  await page.getByTestId('diff-scroll').evaluate((node, point) => { node.scrollTop = point.top; node.scrollLeft = point.left; }, { top, left });
   await page.evaluate(delta => window.scrollTo(0, document.documentElement.scrollHeight - innerHeight - 30 + delta), pageDelta);
   // Let native scroll events and scroll anchoring settle before taking a baseline.
   await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
@@ -80,14 +80,14 @@ for (const view of ['changes', 'history'] as const) {
     await page.goto(`${origin}/?session=${sessionId}#ticket=${ticket.ticket}`);
     if (view === 'history') {
       await page.getByRole('navigation', { name: '主视图', exact: true }).getByRole('button', { name: '历史', exact: true }).click();
-      await page.locator('.commit-row').first().click();
+      await page.getByTestId('commit-row').first().click();
     }
     await expect(page.locator('.diff-header h2')).toHaveText('a.txt');
     await page.getByRole('button', { name: '并排', exact: true }).click();
     await page.getByLabel('自动折行').uncheck();
     const disclosure = view === 'history' ? '.commit-files' : '.group-staged';
     await page.locator(`${disclosure} summary`).click();
-    await page.locator('.code-scroll').evaluate(node => { (node as HTMLElement).dataset.scrollProbe = 'original'; });
+    await page.getByTestId('diff-scroll').evaluate(node => { (node as HTMLElement).dataset.scrollProbe = 'original'; });
     await moveDown(page, 620, 180);
     const original = await scrollState(page, disclosure);
     // The compact layout needs less page scrolling; any nonzero offset still
@@ -95,15 +95,13 @@ for (const view of ['changes', 'history'] as const) {
     expect(original.pageY).toBeGreaterThan(0); expect(original.top).toBe(620); expect(original.left).toBe(180); expect(original.collapsed).toBe(true);
     const action = view === 'history' ? 'commit-change' : 'change';
 
-    const focus = await holdNext(page, action);
-    try {
-      await page.evaluate(() => { window.dispatchEvent(new Event('blur')); window.dispatchEvent(new Event('focus')); });
-      await focus.pending;
-      expect(await scrollState(page, disclosure)).toEqual(original);
-      await focus.finish();
-      await expect(page.locator('.detail-panel [role="status"]').filter({ hasText: '正在' })).toHaveCount(0);
-      expect(await scrollState(page, disclosure)).toEqual(original);
-    } finally { focus.release(); }
+    const reads: string[] = []; const observe = (request: import('@playwright/test').Request) => { if (request.url().endsWith('/api')) reads.push(request.postDataJSON()?.action); };
+    page.on('request', observe);
+    await page.evaluate(() => { window.dispatchEvent(new Event('blur')); window.dispatchEvent(new Event('focus')); });
+    await expect.poll(() => reads.filter(read => read === 'overview').length).toBe(1);
+    await page.waitForTimeout(1000);
+    expect(reads.filter(read => ['change', 'commit', 'commit-change', 'history'].includes(read))).toEqual([]);
+    expect(await scrollState(page, disclosure)).toEqual(original); page.off('request', observe);
 
     const manual = await holdNext(page, action);
     try {
@@ -122,7 +120,7 @@ for (const view of ['changes', 'history'] as const) {
     const beforeFailure = await scrollState(page, disclosure);
     const failed = await holdNext(page, action);
     try {
-      await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
+      await page.getByRole('button', { name: '刷新仓库', exact: true }).evaluate(button => (button as HTMLButtonElement).click());
       await failed.pending;
       expect(await scrollState(page, disclosure)).toEqual(beforeFailure);
       await failed.finish(true);
@@ -149,12 +147,12 @@ for (const view of ['changes', 'history'] as const) {
       const group = view === 'history' ? '.commit-files' : '.group-unstaged';
       await page.locator(`${group} .file-row`).filter({ hasText: 'b.txt' }).click();
       await next.pending;
-      await expect(page.locator('.code-scroll')).toHaveCount(0);
+      await expect(page.getByTestId('diff-scroll')).toHaveCount(0);
       await next.finish();
       await expect(page.locator('.diff-header h2')).toHaveText('b.txt');
       const other = await scrollState(page, disclosure);
       expect(other.retained).toBe(false); expect(other.top).toBe(0); expect(other.left).toBe(0);
-      await expect(page.locator('.code-scroll')).toContainText(view === 'history' ? '+committed-b.txt' : '+working-b.txt');
+      await expect(page.getByTestId('diff-scroll')).toContainText(view === 'history' ? '+committed-b.txt' : '+working-b.txt');
     } finally { next.release(); }
   });
 }

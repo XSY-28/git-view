@@ -1,13 +1,12 @@
-import { useEffect, useRef, useState, type Dispatch, type SetStateAction } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { z } from 'zod';
-import { comparisonCommitsSchema, diffSchema, queryKey, revisionComparisonSchema, type ApiRequest, type ChangeEntry, type ComparisonCommits, type ComparisonMode, type ComparisonOptions, type ComparisonSide, type Diff, type ReadStamp, type RepositorySession, type RevisionComparison } from '@git-view/contracts';
+import { comparisonCommitsSchema, diffSchema, queryKey, revisionComparisonSchema, type ApiRequest, type ChangeEntry, type ComparisonCommits, type ComparisonMode, type ComparisonOptions, type ComparisonSide, type Diff, type RepositorySession, type RevisionComparison } from '@git-view/contracts';
 import { api, ApiError, errorMessage } from '../../state/api';
 import { RequestGate } from '../../state/request-gate';
 import { matchesFileFilter } from '../changes/change-filter';
-import type { ReadState } from '../feedback/ReadFeedback';
+import type { Resource, ResourceSetter } from '../../state/resource';
 
-type Resource<T> = ReadState & { value?: T; stamp?: ReadStamp };
-type Setter<T> = Dispatch<SetStateAction<Resource<T>>>;
+type Setter<T> = ResourceSetter<T>;
 type Slot = 'compare' | 'diff' | 'a' | 'b';
 type Fields = { action: 'compare' } & ComparisonOptions | { action: 'comparison-change'; comparisonId: string; mode: ComparisonMode; entryId: string } | { action: 'comparison-commits'; comparisonId: string; side: ComparisonSide; cursor?: string };
 const empty = <T,>(): Resource<T> => ({ loading: false });

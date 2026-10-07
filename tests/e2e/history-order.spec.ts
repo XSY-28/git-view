@@ -20,7 +20,7 @@ async function call(action: Record<string, unknown>) {
 async function open(page: Page) {
   const ticket = await call({ action: 'ticket', sessionId });
   await page.goto(`${origin}/?session=${encodeURIComponent(sessionId)}#ticket=${encodeURIComponent(ticket.ticket as string)}`);
-  await expect(page.locator('.repository-title h1')).toHaveText('main-repository');
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('main-repository');
 }
 function historyResponse(page: Page, order: 'date' | 'topo', cursor = false) {
   return page.waitForResponse(response => {
@@ -40,7 +40,7 @@ async function expectRenderedHistory(page: Page, history: HistoryPage) {
   // ResizeObserver changes the virtual window without changing the loaded
   // history. Check every currently rendered row against authentic server OIDs.
   await expect.poll(async () => {
-    const rows = await page.locator('.commit-row').evaluateAll(nodes => nodes.map(node => ({
+    const rows = await page.getByTestId('commit-row').evaluateAll(nodes => nodes.map(node => ({
       index: Number(node.getAttribute('data-row')), title: node.getAttribute('title') || '',
     })));
     return rows.length > 0 && rows.every(row => {
@@ -90,9 +90,9 @@ test('HEAD is the initial range; all refs defaults to interleaved dates and can 
   await expect(page.getByRole('complementary', { name: '历史范围', exact: true })).toHaveCount(0);
   await page.getByRole('navigation', { name: '主视图', exact: true }).getByRole('button', { name: '历史', exact: true }).click();
   await expect(page.getByRole('button', { name: '当前 HEAD', exact: true })).toHaveAttribute('aria-pressed', 'true');
-  await expect(page.locator('.commit-row')).toHaveCount(4);
-  await expect(page.locator('.commit-row').first()).toContainText('MAIN merge feature');
-  await expect(page.locator('.commit-row').filter({ hasText: 'TODO maintenance' })).toHaveCount(0);
+  await expect(page.getByTestId('commit-row')).toHaveCount(4);
+  await expect(page.getByTestId('commit-row').first()).toContainText('MAIN merge feature');
+  await expect(page.getByTestId('commit-row').filter({ hasText: 'TODO maintenance' })).toHaveCount(0);
   await expect(page.getByLabel('历史排序', { exact: true })).toHaveCount(0);
   expect((await graphLanes(page)).length).toBeGreaterThan(1);
 
@@ -105,7 +105,7 @@ test('HEAD is the initial range; all refs defaults to interleaved dates and can 
   await expect(page.getByRole('button', { name: /继续加载 200 条/ })).toBeInViewport({ ratio: 1 });
   expect(date.commits.slice(0, 6).map(commit => commit.subject)).toEqual(['TODO maintenance 230', 'MAIN merge feature', 'TODO maintenance 229', 'MAIN implementation', 'TODO maintenance 228', 'FEATURE implementation']);
   expect(date.commits.find(commit => commit.subject === 'MAIN merge feature')?.parents).toHaveLength(2);
-  await expect(page.locator('.commit-row[data-row="1"]')).toContainText('MAIN merge feature');
+  await expect(page.locator('[data-testid=commit-row][data-row="1"]')).toContainText('MAIN merge feature');
   expect((await graphLanes(page)).length).toBeGreaterThan(1);
 
   const topoResponse = historyResponse(page, 'topo');
@@ -113,7 +113,7 @@ test('HEAD is the initial range; all refs defaults to interleaved dates and can 
   const topo = await historyData(await topoResponse);
   expect(topo.commits).toHaveLength(200);
   expect(topo.commits.every(commit => commit.subject.startsWith('TODO maintenance ') && commit.parents.length <= 1)).toBe(true);
-  await expect(page.locator('.commit-row').first()).toContainText('TODO maintenance 230');
+  await expect(page.getByTestId('commit-row').first()).toContainText('TODO maintenance 230');
   await expect.poll(() => graphLanes(page)).toEqual(['15']);
   expect(await snapshot()).toEqual(before);
 });
@@ -124,7 +124,7 @@ test('late sort responses and late pagination cannot replace the current orderin
   await page.getByRole('button', { name: '全部引用', exact: true }).click();
   const order = page.getByLabel('历史排序', { exact: true });
   await expect(order).toHaveValue('date');
-  await expect(page.locator('.commit-row[data-row="1"]')).toContainText('MAIN merge feature');
+  await expect(page.locator('[data-testid=commit-row][data-row="1"]')).toContainText('MAIN merge feature');
   const sort = deferred(); const pagination = deferred();
   type HeldRequest = { requestId: string; generation: number; ready: ReturnType<typeof deferred>; finished: ReturnType<typeof deferred> };
   const sortRequests: HeldRequest[] = []; const pageRequests: HeldRequest[] = [];
@@ -173,7 +173,7 @@ test('late sort responses and late pagination cannot replace the current orderin
     const dateResponse = historyResponse(page, 'date');
     await order.selectOption('date');
     const date = await historyData(await dateResponse);
-    await expect(page.locator('.commit-row[data-row="1"]')).toContainText('MAIN merge feature');
+    await expect(page.locator('[data-testid=commit-row][data-row="1"]')).toContainText('MAIN merge feature');
     await expect(page.locator('.history-read-state')).toHaveAttribute('data-phase', 'idle');
     expect(date.commits).toHaveLength(200);
     await expectRenderedHistory(page, date);
@@ -185,7 +185,7 @@ test('late sort responses and late pagination cannot replace the current orderin
     await expect(order).toHaveValue('date');
     await expectRenderedHistory(page, date);
     await expect(page.locator('.history-loaded-count')).toHaveText('已加载 200 条提交');
-    await expect(page.locator('.commit-row[data-row="1"]')).toContainText('MAIN merge feature');
+    await expect(page.locator('[data-testid=commit-row][data-row="1"]')).toContainText('MAIN merge feature');
     await expect(page.locator('.history-read-state')).toHaveAttribute('data-phase', 'idle');
 
     holdDatePage = true;
@@ -213,7 +213,7 @@ test('late sort responses and late pagination cannot replace the current orderin
     await expect(order).toHaveValue('topo');
     await expectRenderedHistory(page, topo);
     await expect(page.locator('.history-loaded-count')).toHaveText('已加载 200 条提交');
-    await expect(page.locator('.commit-row').filter({ hasText: 'MAIN merge feature' })).toHaveCount(0);
+    await expect(page.getByTestId('commit-row').filter({ hasText: 'MAIN merge feature' })).toHaveCount(0);
     await expect(page.locator('.history-read-state')).toHaveAttribute('data-phase', 'idle');
     await expect.poll(() => graphLanes(page)).toEqual(['15']);
     expect(await snapshot()).toEqual(before);
@@ -229,7 +229,7 @@ test('all-ref ordering survives view and scope changes and belongs to each workt
   await expect.poll(() => graphLanes(page)).toEqual(['15']);
   await page.getByRole('button', { name: '当前 HEAD', exact: true }).click();
   await expect(page.getByLabel('历史排序', { exact: true })).toHaveCount(0);
-  await expect(page.locator('.commit-row')).toHaveCount(4);
+  await expect(page.getByTestId('commit-row')).toHaveCount(4);
   await page.getByRole('button', { name: '全部引用', exact: true }).click();
   await expect(page.getByLabel('历史排序', { exact: true })).toHaveValue('topo');
   await page.getByRole('button', { name: /当前改动/ }).first().click();
@@ -239,7 +239,7 @@ test('all-ref ordering survives view and scope changes and belongs to each workt
   async function switchWorktree(from: string, to: string) {
     await page.getByRole('button', { name: `切换仓库：${from}`, exact: true }).click();
     await page.getByRole('dialog', { name: '切换仓库', exact: true }).locator('.navigation-worktree').filter({ hasText: to }).click();
-    await expect(page.locator('.repository-title h1')).toHaveText(to);
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText(to);
   }
   await switchWorktree('main-repository', 'feature-worktree');
   await expect(page.getByRole('button', { name: /当前改动/ }).first()).toHaveClass(/active/);
@@ -247,13 +247,13 @@ test('all-ref ordering survives view and scope changes and belongs to each workt
   await expect(page.getByRole('button', { name: '当前 HEAD', exact: true })).toHaveAttribute('aria-pressed', 'true');
   await page.getByRole('button', { name: '全部引用', exact: true }).click();
   await expect(page.getByLabel('历史排序', { exact: true })).toHaveValue('date');
-  await expect(page.locator('.commit-row[data-row="1"]')).toContainText('MAIN merge feature');
+  await expect(page.locator('[data-testid=commit-row][data-row="1"]')).toContainText('MAIN merge feature');
   await switchWorktree('feature-worktree', 'main-repository');
   await expect(page.getByLabel('历史排序', { exact: true })).toHaveValue('topo');
   await expect.poll(() => graphLanes(page)).toEqual(['15']);
   await switchWorktree('main-repository', 'feature-worktree');
   await expect(page.getByLabel('历史排序', { exact: true })).toHaveValue('date');
-  await expect(page.locator('.commit-row[data-row="1"]')).toContainText('MAIN merge feature');
+  await expect(page.locator('[data-testid=commit-row][data-row="1"]')).toContainText('MAIN merge feature');
   expect(await snapshot()).toEqual(before);
 });
 
@@ -266,7 +266,7 @@ test('history ordering remains usable at a 390px viewport', async ({ page }, tes
   await expect(order).toBeVisible(); await expect(order).toHaveValue('date');
   await order.selectOption('topo'); await expect.poll(() => graphLanes(page)).toEqual(['15']);
   await order.selectOption('date');
-  await expect(page.locator('.commit-row[data-row="1"]')).toContainText('MAIN merge feature');
+  await expect(page.locator('[data-testid=commit-row][data-row="1"]')).toContainText('MAIN merge feature');
   await expect(order).toBeInViewport();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   await page.screenshot({ path: testInfo.outputPath('history-order-narrow.png'), fullPage: true });
@@ -294,21 +294,21 @@ test('wide merge graphs have a clipped graph column separate from descriptions a
   const ticket = await call({ action: 'ticket', sessionId: opened.sessionId });
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto(`${origin}/?session=${encodeURIComponent(opened.sessionId as string)}#ticket=${encodeURIComponent(ticket.ticket as string)}`);
-  await expect(page.locator('.repository-title h1')).toHaveText('wide-history');
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('wide-history');
   await page.getByRole('navigation', { name: '主视图', exact: true }).getByRole('button', { name: '历史', exact: true }).click();
   await expect(page.locator('.history-loaded-count')).toHaveText('已加载 194 条提交');
-  const row = page.locator('.commit-row[data-row="0"]');
+  const row = page.locator('[data-testid=commit-row][data-row="0"]');
   await expect(row.locator('.commit-subject')).toContainText('Merge 64 parallel branches');
   await expect(row.locator('.commit-graph path')).toHaveCount(64);
   const deepTop = 100 * await row.evaluate(node => node.getBoundingClientRect().height);
-  const scroll = page.locator('.history-scroll');
+  const scroll = page.getByTestId('history-scroll');
   const pan = page.locator('.history-graph-pan');
   await expect(row.locator('.history-graph-viewport')).toBeVisible();
   await expect(pan).toBeVisible();
-  expect(await pan.evaluate(node => !node.closest('.history-scroll'))).toBe(true);
+  expect(await pan.evaluate(node => !node.closest('[data-testid=history-scroll]'))).toBe(true);
   const geometry = () => scroll.evaluate(node => {
     const viewport = node.getBoundingClientRect();
-    const rows = [...node.querySelectorAll('.commit-row')].filter(row => {
+    const rows = [...node.querySelectorAll('[data-testid=commit-row]')].filter(row => {
       const rect = row.getBoundingClientRect(); return rect.top >= viewport.top && rect.bottom <= viewport.bottom;
     }).map(row => {
       const clipNode = row.querySelector<HTMLElement>('.history-graph-viewport')!;
@@ -361,7 +361,7 @@ test('wide merge graphs have a clipped graph column separate from descriptions a
   async function assertNoGraphOverText() {
     const leaks = await scroll.evaluate(node => {
       const viewport = node.getBoundingClientRect();
-      const visible = [...node.querySelectorAll('.commit-row')].find(row => {
+      const visible = [...node.querySelectorAll('[data-testid=commit-row]')].find(row => {
         const rect = row.getBoundingClientRect(); return rect.top >= viewport.top && rect.bottom <= viewport.bottom;
       })!;
       const row = visible.getBoundingClientRect();
@@ -420,18 +420,18 @@ test('wide merge graphs have a clipped graph column separate from descriptions a
 
   await page.setViewportSize({ width: 390, height: 844 });
   await scroll.evaluate((node, top) => { node.scrollTop = top; }, deepTop);
-  const deepRow = page.locator('.commit-row[data-row="100"]');
+  const deepRow = page.locator('[data-testid=commit-row][data-row="100"]');
   const subject = await deepRow.locator('.commit-subject').innerText();
   await deepRow.locator('.commit-subject').click();
   await expect(page.locator('.commit-detail')).toContainText(subject);
   await page.getByRole('navigation', { name: '窄窗口面板', exact: true }).getByRole('button', { name: '提交列表', exact: true }).click();
   await expect(deepRow).toHaveAttribute('aria-pressed', 'true');
   await deepRow.focus(); await deepRow.press('ArrowDown');
-  await expect(page.locator('.commit-row[data-row="101"]')).toBeFocused();
-  await expect(page.locator('.commit-row[data-row="101"]')).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.locator('[data-testid=commit-row][data-row="101"]')).toBeFocused();
+  await expect(page.locator('[data-testid=commit-row][data-row="101"]')).toHaveAttribute('aria-pressed', 'true');
   await page.keyboard.press('End');
-  await expect(page.locator('.commit-row[data-row="193"]')).toBeFocused();
-  await expect(page.locator('.commit-row[data-row="193"]')).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.locator('[data-testid=commit-row][data-row="193"]')).toBeFocused();
+  await expect(page.locator('[data-testid=commit-row][data-row="193"]')).toHaveAttribute('aria-pressed', 'true');
   await page.getByRole('button', { name: '定位 HEAD', exact: true }).click();
   await page.getByRole('navigation', { name: '窄窗口面板', exact: true }).getByRole('button', { name: '提交列表', exact: true }).click();
   await expect.poll(() => scroll.evaluate(node => node.scrollTop)).toBe(0);

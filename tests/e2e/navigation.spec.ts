@@ -29,36 +29,36 @@ test('reference filters are read-only; changes selection and linked worktree con
   const errors: string[] = []; page.on('pageerror', error => errors.push(error.message));
   const index = await readFile(join(repo, '.git/index')); const head = git('rev-parse', 'HEAD');
   const ticket = await call({ action: 'ticket', sessionId }); await page.goto(`${origin}/?session=${sessionId}#ticket=${ticket.ticket}`);
-  await page.locator('.group-unstaged .file-row').click(); await expect(page.locator('.code-scroll')).toContainText('+V3 working');
+  await page.locator('.group-unstaged .file-row').click(); await expect(page.getByTestId('diff-scroll')).toContainText('+V3 working');
   await page.getByRole('navigation', { name: '主视图', exact: true }).getByRole('button', { name: '历史', exact: true }).click();
-  await page.locator('.navigation-ref').filter({ hasText: /^(?:● )?main/ }).click();
-  await expect(page.locator('.commit-row')).toHaveCount(1); await expect(page.locator('.commit-row')).toContainText('main first');
-  await page.locator('.navigation-ref').filter({ hasText: /^side/ }).click();
-  await expect(page.locator('.navigation-ref').filter({ hasText: /^side/ })).toHaveAttribute('aria-pressed', 'true');
-  await expect(page.locator('.navigation-ref').filter({ hasText: /^(?:● )?main/ })).toContainText('当前分支');
-  await expect(page.locator('.navigation-ref').filter({ hasText: /^side/ })).not.toContainText('当前分支');
+  await page.getByTestId('navigation-ref').filter({ hasText: /^(?:● )?main/ }).click();
+  await expect(page.getByTestId('commit-row')).toHaveCount(1); await expect(page.getByTestId('commit-row')).toContainText('main first');
+  await page.getByTestId('navigation-ref').filter({ hasText: /^side/ }).click();
+  await expect(page.getByTestId('navigation-ref').filter({ hasText: /^side/ })).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.getByTestId('navigation-ref').filter({ hasText: /^(?:● )?main/ })).toContainText('当前分支');
+  await expect(page.getByTestId('navigation-ref').filter({ hasText: /^side/ })).not.toContainText('当前分支');
   await expect(page.getByRole('button', { name: '分支操作', exact: true })).toHaveText('main');
-  await expect(page.locator('.commit-row').filter({ hasText: 'side history 210' })).toBeVisible();
+  await expect(page.getByTestId('commit-row').filter({ hasText: 'side history 210' })).toBeVisible();
   await expect(page.locator('.history-loaded-count')).toHaveText('已加载 200 条提交');
   await page.getByRole('button', { name: /继续加载 200 条/ }).click(); await expect(page.locator('.history-loaded-count')).toHaveText('已加载 212 条提交');
-  await page.locator('.history-scroll').evaluate(node => { node.scrollTop = 600; }); await page.waitForTimeout(100);
-  await page.locator('.commit-row[data-row="12"]').click(); await expect(page.locator('.commit-detail')).toContainText('side history 198');
-  await page.getByRole('button', { name: /当前改动/ }).first().click(); await expect(page.locator('.group-unstaged .file-row')).toHaveAttribute('aria-pressed', 'true'); await expect(page.locator('.code-scroll')).toContainText('+V3 working');
-  await page.getByRole('navigation', { name: '主视图', exact: true }).getByRole('button', { name: '历史', exact: true }).click(); await expect(page.locator('.commit-row[data-row="12"]')).toHaveAttribute('aria-pressed', 'true'); expect(await page.locator('.history-scroll').evaluate(node => node.scrollTop)).toBe(600);
-  await page.locator('.navigation-ref').filter({ hasText: /^(?:● )?main/ }).click(); await expect(page.locator('.commit-row')).toHaveCount(1); await expect(page.locator('.commit-row')).toContainText('main first');
+  await page.getByTestId('history-scroll').evaluate(node => { node.scrollTop = 600; }); await page.waitForTimeout(100);
+  await page.locator('[data-testid=commit-row][data-row="12"]').click(); await expect(page.locator('.commit-detail')).toContainText('side history 198');
+  await page.getByRole('button', { name: /当前改动/ }).first().click(); await expect(page.locator('.group-unstaged .file-row')).toHaveAttribute('aria-pressed', 'true'); await expect(page.getByTestId('diff-scroll')).toContainText('+V3 working');
+  await page.getByRole('navigation', { name: '主视图', exact: true }).getByRole('button', { name: '历史', exact: true }).click(); await expect(page.locator('[data-testid=commit-row][data-row="12"]')).toHaveAttribute('aria-pressed', 'true'); expect(await page.getByTestId('history-scroll').evaluate(node => node.scrollTop)).toBe(600);
+  await page.getByTestId('navigation-ref').filter({ hasText: /^(?:● )?main/ }).click(); await expect(page.getByTestId('commit-row')).toHaveCount(1); await expect(page.getByTestId('commit-row')).toContainText('main first');
   await page.getByRole('button', { name: /当前改动/ }).first().click();
   expect(git('rev-parse', 'HEAD')).toBe(head); expect(await readFile(join(repo, '.git/index'))).toEqual(index);
   await page.getByRole('button', { name: '切换仓库：主 仓库', exact: true }).click();
   await page.getByRole('dialog', { name: '切换仓库', exact: true }).locator('.navigation-worktree').filter({ hasText: '关联 工作区' }).click();
-  await expect(page.locator('.repository-title h1')).toHaveText('关联 工作区'); await expect(page.locator('.code-scroll')).toContainText('linked worktree contents'); await expect(page.locator('.group-staged .file-row')).toHaveCount(0);
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('关联 工作区'); await expect(page.getByTestId('diff-scroll')).toContainText('linked worktree contents'); await expect(page.locator('.group-staged .file-row')).toHaveCount(0);
   await page.getByRole('button', { name: '切换仓库：关联 工作区', exact: true }).click();
   await page.getByRole('dialog', { name: '切换仓库', exact: true }).locator('.navigation-worktree').filter({ hasText: '主 仓库' }).click();
-  await expect(page.locator('.repository-title h1')).toHaveText('主 仓库'); await expect(page.locator('.group-unstaged .file-row')).toHaveAttribute('aria-pressed', 'true'); await expect(page.locator('.code-scroll')).toContainText('+V3 working');
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('主 仓库'); await expect(page.locator('.group-unstaged .file-row')).toHaveAttribute('aria-pressed', 'true'); await expect(page.getByTestId('diff-scroll')).toContainText('+V3 working');
   await page.getByRole('navigation', { name: '主视图', exact: true }).getByRole('button', { name: '历史', exact: true }).click();
   await page.setViewportSize({ width: 390, height: 844 }); await page.getByRole('button', { name: '历史范围', exact: true }).click(); await expect(page.getByLabel('筛选引用')).toBeVisible();
-  await page.getByLabel('筛选引用').fill('start'); await expect(page.locator('.navigation-ref')).toHaveCount(1); await page.locator('.navigation-ref').focus(); await page.keyboard.press('Enter');
-  await expect(page.locator('.commit-row')).toHaveCount(1); expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
-  await writeFile(join(repo, 'file.txt'), 'V4 keyboard refresh\n'); await page.keyboard.press('Control+r'); await page.getByRole('button', { name: /当前改动/ }).first().click(); await page.getByRole('button', { name: '查看详情', exact: true }).click(); await expect(page.locator('.code-scroll')).toContainText('+V4 keyboard refresh');
+  await page.getByLabel('筛选引用').fill('start'); await expect(page.getByTestId('navigation-ref')).toHaveCount(1); await page.getByTestId('navigation-ref').focus(); await page.keyboard.press('Enter');
+  await expect(page.getByTestId('commit-row')).toHaveCount(1); expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  await writeFile(join(repo, 'file.txt'), 'V4 keyboard refresh\n'); await page.keyboard.press('Control+r'); await page.getByRole('button', { name: /当前改动/ }).first().click(); await page.getByRole('button', { name: '查看详情', exact: true }).click(); await expect(page.getByTestId('diff-scroll')).toContainText('+V4 keyboard refresh');
   expect(errors).toEqual([]);
 });
 
@@ -68,14 +68,14 @@ test('startup restores the most recent path; missing path stays explicit and Ctr
   const recent = await call({ action: 'open', path: repo });
   const ticket = await call({ action: 'ticket', sessionId: recent.sessionId });
   await page.goto(`${origin}/#ticket=${ticket.ticket}`);
-  await expect(page.locator('.repository-title h1')).toHaveText('主 仓库');
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('主 仓库');
   await page.goto('about:blank');
   const nextTicket = await call({ action: 'ticket', sessionId: recent.sessionId });
   await rename(repo, `${repo}-moved`);
   await page.goto(`${origin}/#ticket=${nextTicket.ticket}`);
   await expect(page.locator('.repository-switcher-error')).toContainText(repo);
-  await expect(page.locator('.repository-title h1')).toHaveCount(0);
-  await expect(page.getByRole('dialog', { name: '切换仓库', exact: true }).locator('.navigation-recent').filter({ hasText: 'another valid repository' })).toBeVisible();
+  await expect(page.getByRole('heading', { level: 1 })).toHaveCount(0);
+  await expect(page.getByRole('dialog', { name: '切换仓库', exact: true }).getByTestId('recent-repository').filter({ hasText: 'another valid repository' })).toBeVisible();
   let picked = false;
   await page.route(`${origin}/api`, async route => {
     const request = route.request().postDataJSON() as { action: string };
@@ -84,7 +84,7 @@ test('startup restores the most recent path; missing path stays explicit and Ctr
   });
   await page.keyboard.press('Control+o'); await expect.poll(() => picked).toBe(true);
   await expect(page.getByRole('button', { name: /^打开仓库…/ })).toBeEnabled();
-  await expect(page.locator('.repository-title h1')).toHaveCount(0);
+  await expect(page.getByRole('heading', { level: 1 })).toHaveCount(0);
 });
 
 function deferred() { let resolve!: () => void; const promise = new Promise<void>(accept => { resolve = accept; }); return { promise, resolve }; }
@@ -130,46 +130,46 @@ test('a delayed recent repository cannot override an explicit desktop open in pr
   await expect.poll(() => actions.some(request => request.action === 'recents')).toBe(true);
   await page.evaluate(() => window.dispatchEvent(new CustomEvent('git-view:open-repository', { detail: { path: '/fixture/B' } })));
   await expect.poll(() => actions.filter(request => request.action === 'open').length).toBe(1);
-  recents.resolve(); await expect(page.getByRole('dialog', { name: '切换仓库', exact: true }).locator('.navigation-recent')).toContainText('/fixture/A');
-  opening.resolve(); await expect(page.locator('.repository-title h1')).toHaveText('B');
+  recents.resolve(); await expect(page.getByRole('dialog', { name: '切换仓库', exact: true }).getByTestId('recent-repository')).toContainText('/fixture/A');
+  opening.resolve(); await expect(page.getByRole('heading', { level: 1 })).toHaveText('B');
   await page.waitForTimeout(100);
   expect(actions.filter(request => request.action === 'open').map(request => request.path)).toEqual(['/fixture/B']);
 });
 
-test('a focus refresh keeps a file selected while its newer overview is still pending', async ({ page }) => {
+test('a full refresh keeps a file selected while its newer overview is still pending', async ({ page }) => {
   let pause = false; const overview = deferred(); const actions = await raceFixture(page, { initial: true, overview: () => pause ? overview.promise : Promise.resolve() });
-  await expect(page.locator('.code-scroll')).toContainText('+V2');
+  await expect(page.getByTestId('diff-scroll')).toContainText('+V2');
   const target = page.locator('.group-unstaged .file-row'); const before = await target.boundingBox(); expect(before).not.toBeNull();
   await page.mouse.move(before!.x + before!.width / 2, before!.y + before!.height / 2); await page.mouse.down();
-  pause = true; await page.evaluate(() => window.dispatchEvent(new Event('focus')));
+  pause = true; await page.getByRole('button', { name: '刷新仓库', exact: true }).evaluate(button => (button as HTMLButtonElement).click());
   await expect.poll(() => actions.filter(request => request.action === 'overview').length).toBe(2);
   await expect(page.getByRole('button', { name: '取消仓库状态读取', exact: true })).toBeVisible();
   expect(await target.boundingBox()).toEqual(before);
-  await page.mouse.up(); await expect(page.locator('.code-scroll')).toContainText('+V3');
+  await page.mouse.up(); await expect(page.getByTestId('diff-scroll')).toContainText('+V3');
   overview.resolve(); await expect(page.locator('.group-unstaged .file-row')).toHaveAttribute('aria-pressed', 'true');
-  await expect(page.locator('.code-scroll')).toContainText('+V3'); await expect(page.locator('.group-staged .file-row')).toHaveAttribute('aria-pressed', 'false');
+  await expect(page.getByTestId('diff-scroll')).toContainText('+V3'); await expect(page.locator('.group-staged .file-row')).toHaveAttribute('aria-pressed', 'false');
 });
 
 
 test('desktop requests keep the latest path while opening, including a return to the currently shown repository', async ({ page }) => {
   const opening = deferred(); const actions = await raceFixture(page, { initial: true, open: opening.promise });
-  await expect(page.locator('.repository-title h1')).toHaveText('B');
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('B');
   await page.evaluate(() => { window.dispatchEvent(new CustomEvent('git-view:open-repository', { detail: { path: '/fixture/C' } })); window.dispatchEvent(new CustomEvent('git-view:open-repository', { detail: { path: '/fixture/C' } })); });
   await expect.poll(() => actions.filter(request => request.action === 'open').length).toBe(1);
   await page.evaluate(() => window.dispatchEvent(new CustomEvent('git-view:open-repository', { detail: { path: '/fixture/B' } })));
   opening.resolve();
   await expect.poll(() => actions.filter(request => request.action === 'open').map(request => request.path)).toEqual(['/fixture/C', '/fixture/B']);
-  await expect(page.locator('.repository-title h1')).toHaveText('B');
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('B');
 });
 
 
 test('returning to the in-flight desktop path clears an older queued path', async ({ page }) => {
   const opening = deferred(); const actions = await raceFixture(page, { initial: true, open: opening.promise });
-  await expect(page.locator('.repository-title h1')).toHaveText('B');
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('B');
   await page.evaluate(() => window.dispatchEvent(new CustomEvent('git-view:open-repository', { detail: { path: '/fixture/C' } })));
   await expect.poll(() => actions.filter(request => request.action === 'open').length).toBe(1);
   await page.evaluate(() => { window.dispatchEvent(new CustomEvent('git-view:open-repository', { detail: { path: '/fixture/B' } })); window.dispatchEvent(new CustomEvent('git-view:open-repository', { detail: { path: '/fixture/C' } })); });
-  opening.resolve(); await expect(page.locator('.repository-title h1')).toHaveText('C');
+  opening.resolve(); await expect(page.getByRole('heading', { level: 1 })).toHaveText('C');
   await page.waitForTimeout(100);
   expect(actions.filter(request => request.action === 'open').map(request => request.path)).toEqual(['/fixture/C']);
 });
@@ -177,14 +177,14 @@ test('returning to the in-flight desktop path clears an older queued path', asyn
 
 test('background history refresh keeps list geometry, scroll and click targets until the replacement arrives', async ({ page }) => {
   let pause = false; const history = deferred(); const overview = deferred(); const actions = await raceFixture(page, { initial: true, overview: () => pause ? overview.promise : Promise.resolve(), history: () => pause ? history.promise : Promise.resolve() });
-  await expect(page.locator('.code-scroll')).toContainText('+V2');
+  await expect(page.getByTestId('diff-scroll')).toContainText('+V2');
   await page.getByRole('navigation', { name: '主视图', exact: true }).getByRole('button', { name: '历史', exact: true }).click();
   await expect(page.locator('.history-loaded-count')).toHaveText('已加载 30 条提交');
-  await page.locator('.history-scroll').evaluate(node => { node.scrollTop = 600; });
-  const target = page.locator('.commit-row[data-row="12"]'); await expect(target).toBeVisible();
+  await page.getByTestId('history-scroll').evaluate(node => { node.scrollTop = 600; });
+  const target = page.locator('[data-testid=commit-row][data-row="12"]'); await expect(target).toBeVisible();
   const before = await target.boundingBox(); expect(before).not.toBeNull();
   await page.mouse.move(before!.x + before!.width / 2, before!.y + before!.height / 2); await page.mouse.down();
-  pause = true; await page.evaluate(() => window.dispatchEvent(new Event('focus')));
+  pause = true; await page.getByRole('button', { name: '刷新仓库', exact: true }).evaluate(button => (button as HTMLButtonElement).click());
   await expect.poll(() => actions.filter(request => request.action === 'overview').length).toBe(2);
   await expect(page.locator('.history-read-state')).toHaveAttribute('data-phase', 'stale'); expect(await target.boundingBox()).toEqual(before);
   overview.resolve();
@@ -192,9 +192,9 @@ test('background history refresh keeps list geometry, scroll and click targets u
   await expect(page.locator('.history-read-state')).toHaveAttribute('data-phase', 'loading');
   await expect(page.getByRole('button', { name: '取消提交历史读取', exact: true })).toBeVisible();
   expect(await target.boundingBox()).toEqual(before);
-  expect(await page.locator('.history-scroll').evaluate(node => node.scrollTop)).toBe(600);
+  expect(await page.getByTestId('history-scroll').evaluate(node => node.scrollTop)).toBe(600);
   await expect(page.locator('.history-loaded-count')).toHaveText('已加载 30 条提交');
   await page.mouse.up(); await expect(target).toHaveAttribute('aria-pressed', 'true');
   history.resolve(); await expect(page.locator('.commit-detail')).toContainText('fixture commit 18');
-  await expect(target).toHaveAttribute('aria-pressed', 'true'); expect(await page.locator('.history-scroll').evaluate(node => node.scrollTop)).toBe(600);
+  await expect(target).toHaveAttribute('aria-pressed', 'true'); expect(await page.getByTestId('history-scroll').evaluate(node => node.scrollTop)).toBe(600);
 });

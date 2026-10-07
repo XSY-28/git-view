@@ -19,7 +19,7 @@ test('compact diff controls keep code near the top and reveal full IDs, with fil
   const index = await readFile(join(repo, '.git/index')); const head = git('rev-parse', 'HEAD').trim();
   const ticket = await call({ action: 'ticket', sessionId }); await page.goto(`${origin}/?session=${sessionId}#ticket=${ticket.ticket}`);
   await page.locator('.group-staged .file-row').click();
-  await expect(page.locator('.code-scroll')).toContainText('+V2 第 1 行');
+  await expect(page.getByTestId('diff-scroll')).toContainText('+V2 第 1 行');
   await expect(page.locator('.diff-header .diff-toolbar')).toBeVisible();
   await expect(page.locator('.diff-header .file-history-action')).toBeVisible();
   const information = page.getByRole('button', { name: '文件变化信息', exact: true });
@@ -28,7 +28,7 @@ test('compact diff controls keep code near the top and reveal full IDs, with fil
   for (const width of [1440, 900, 390]) {
     await page.setViewportSize({ width, height: width === 390 ? 844 : 960 });
     if (width === 390) await page.getByRole('navigation', { name: '窄窗口面板', exact: true }).getByRole('button', { name: '查看详情', exact: true }).click();
-    const gap = await page.locator('.diff-view').evaluate(node => node.querySelector('.code-scroll')!.getBoundingClientRect().top - node.getBoundingClientRect().top);
+    const gap = await page.locator('.diff-view').evaluate(node => node.querySelector('[data-testid=diff-scroll]')!.getBoundingClientRect().top - node.getBoundingClientRect().top);
     // File title/actions and the comparison baseline occupy compact rows;
     // metadata is explicit disclosure rather than stacked full-ID rows.
     expect(gap).toBeLessThanOrEqual(width === 1440 ? 110 : 150);
@@ -42,7 +42,7 @@ test('compact diff controls keep code near the top and reveal full IDs, with fil
   await expect(page.locator('.diff-object-details')).toContainText(head);
   await expect(page.locator('.diff-object-details')).toContainText('versions.txt');
   await information.click();
-  const code = page.locator('.code-scroll');
+  const code = page.getByTestId('diff-scroll');
   await code.evaluate(node => { node.scrollTop = 600; });
   await expect.poll(() => code.evaluate(node => node.scrollTop)).toBe(600);
   await page.locator('.diff-header .file-history-action').click();
@@ -52,7 +52,7 @@ test('compact diff controls keep code near the top and reveal full IDs, with fil
   await expect(contents.getByRole('button', { name: '文件历史', exact: true })).toHaveAttribute('aria-pressed', 'true');
   await expect(page.getByLabel('文件历史路径')).toHaveValue('versions.txt');
   await expect(page.getByLabel('文件历史提交 ID')).toHaveValue(head);
-  await expect(page.locator('.investigation-file .code-scroll')).toContainText('+V1 第 1 行');
+  await expect(page.locator('.investigation-file [data-testid=diff-scroll]')).toContainText('+V1 第 1 行');
   await main.getByRole('button', { name: /^当前改动/ }).click();
   await expect(page.locator('.group-staged .file-row')).toHaveAttribute('aria-pressed', 'true');
   await expect(code).toContainText('+V2 第 1 行');
@@ -61,7 +61,7 @@ test('compact diff controls keep code near the top and reveal full IDs, with fil
   await expect(contents.getByRole('button', { name: '文件历史', exact: true })).toHaveAttribute('aria-pressed', 'true');
   await expect(page.getByLabel('文件历史路径')).toHaveValue('versions.txt');
   await expect(page.getByLabel('文件历史提交 ID')).toHaveValue(head);
-  await expect(page.locator('.investigation-file .code-scroll')).toContainText('+V1 第 1 行');
+  await expect(page.locator('.investigation-file [data-testid=diff-scroll]')).toContainText('+V1 第 1 行');
   expect(git('rev-parse', 'HEAD').trim()).toBe(head); expect(await readFile(join(repo, '.git/index'))).toEqual(index);
 });
 
@@ -69,7 +69,7 @@ test('split column labels stay flush with the scroll viewport and aligned with b
   const ticket = await call({ action: 'ticket', sessionId }); await page.goto(`${origin}/?session=${sessionId}#ticket=${ticket.ticket}`);
   await page.locator('.group-staged .file-row').click();
   await page.getByRole('button', { name: '并排', exact: true }).click();
-  const scroll = page.locator('.code-scroll');
+  const scroll = page.getByTestId('diff-scroll');
   await expect(page.locator('.split-labels span')).toHaveText([/^HEAD(?: [0-9a-f]{10})?$/, '暂存区']);
   for (const width of [1440, 900]) {
     await page.setViewportSize({ width, height: 960 });
@@ -110,18 +110,18 @@ test('split column labels stay flush with the scroll viewport and aligned with b
 });
 test('both diff modes preserve V1/V2/V3, original line numbers, scroll and stored preference; external edits refresh', async ({ page }) => {
   const ticket = await call({ action: 'ticket', sessionId }); await page.goto(`${origin}/?session=${sessionId}#ticket=${ticket.ticket}`);
-  await page.locator('.group-staged .file-row').click(); await expect(page.locator('.code-scroll')).toContainText('-V1 第 1 行'); await expect(page.locator('.code-scroll')).toContainText('+V2 第 1 行');
+  await page.locator('.group-staged .file-row').click(); await expect(page.getByTestId('diff-scroll')).toContainText('-V1 第 1 行'); await expect(page.getByTestId('diff-scroll')).toContainText('+V2 第 1 行');
   await page.getByRole('button', { name: '并排', exact: true }).click();
   await expect(page.locator('.split-row .removed').first()).toContainText('-V1 第 1 行'); await expect(page.locator('.split-row .added').first()).toContainText('+V2 第 1 行');
   await expect(page.locator('.split-row .removed .line-number').first()).toHaveText('1'); await expect(page.locator('.split-row .added .line-number').first()).toHaveText('1');
   const finalReplacement = page.locator('.split-row').filter({ hasText: 'V1 末尾无换行' }); await expect(finalReplacement).toContainText('+V2 末尾无换行'); await expect(finalReplacement.locator('.split-cell .split-note')).toHaveCount(2);
   const stagedRows = await page.locator('.split-row').count(); await page.getByLabel('自动折行').uncheck(); expect(await page.locator('.split-row').count()).toBe(stagedRows); await page.getByLabel('自动折行').check();
-  await page.locator('.group-unstaged .file-row').click(); await expect(page.locator('.code-scroll')).toContainText('-V2 第 1 行'); await expect(page.locator('.code-scroll')).toContainText('+V3 第 1 行');
-  await page.locator('.code-scroll').evaluate(node => { node.scrollTop = 600; }); await page.waitForTimeout(100); const top = await page.locator('.code-scroll').evaluate(node => node.scrollTop);
-  await page.getByRole('navigation', { name: '主视图', exact: true }).getByRole('button', { name: '历史', exact: true }).click(); await page.locator('.commit-row').first().click(); await expect(page.locator('.commit-detail')).toContainText('diff baseline');
-  await page.getByRole('button', { name: /当前改动/ }).first().click(); await expect(page.locator('.group-unstaged .file-row')).toHaveAttribute('aria-pressed', 'true'); await expect(page.locator('.code-scroll')).toContainText('+V3 第 1 行'); expect(await page.locator('.code-scroll').evaluate(node => node.scrollTop)).toBe(top);
-  await page.getByRole('button', { name: '单列', exact: true }).click(); expect(await page.locator('.code-scroll').evaluate(node => node.scrollTop)).toBe(top);
+  await page.locator('.group-unstaged .file-row').click(); await expect(page.getByTestId('diff-scroll')).toContainText('-V2 第 1 行'); await expect(page.getByTestId('diff-scroll')).toContainText('+V3 第 1 行');
+  await page.getByTestId('diff-scroll').evaluate(node => { node.scrollTop = 600; }); await page.waitForTimeout(100); const top = await page.getByTestId('diff-scroll').evaluate(node => node.scrollTop);
+  await page.getByRole('navigation', { name: '主视图', exact: true }).getByRole('button', { name: '历史', exact: true }).click(); await page.getByTestId('commit-row').first().click(); await expect(page.locator('.commit-detail')).toContainText('diff baseline');
+  await page.getByRole('button', { name: /当前改动/ }).first().click(); await expect(page.locator('.group-unstaged .file-row')).toHaveAttribute('aria-pressed', 'true'); await expect(page.getByTestId('diff-scroll')).toContainText('+V3 第 1 行'); expect(await page.getByTestId('diff-scroll').evaluate(node => node.scrollTop)).toBe(top);
+  await page.getByRole('button', { name: '单列', exact: true }).click(); expect(await page.getByTestId('diff-scroll').evaluate(node => node.scrollTop)).toBe(top);
   await page.getByRole('button', { name: '并排', exact: true }).click(); await page.reload(); await expect(page.locator('.diff-view')).toHaveAttribute('data-diff-mode', 'split');
-  await page.locator('.group-unstaged .file-row').click(); await writeFile(join(repo, 'versions.txt'), contents('V4')); await expect(page.locator('.code-scroll')).toContainText('+V4 第 1 行', { timeout: 15000 });
+  await page.locator('.group-unstaged .file-row').click(); await writeFile(join(repo, 'versions.txt'), contents('V4')); await expect(page.getByTestId('diff-scroll')).toContainText('+V4 第 1 行', { timeout: 15000 });
   await page.setViewportSize({ width: 390, height: 844 }); await page.getByRole('button', { name: '查看详情', exact: true }).click(); await expect(page.locator('.diff-toolbar')).toBeVisible(); expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
 });

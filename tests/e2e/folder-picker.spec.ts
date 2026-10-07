@@ -49,7 +49,7 @@ async function mockApp(page: Page, choose: () => Promise<unknown>, open: (reques
     await route.fulfill({ body: await readFile(file), contentType: file.endsWith('.js') ? 'text/javascript' : file.endsWith('.css') ? 'text/css' : 'text/html' });
   });
   await page.goto(`${origin}/?session=initial`);
-  await expect(page.locator('.repository-title h1')).toHaveText('existing-repository');
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('existing-repository');
   await expect(page.getByText('existing contents', { exact: false })).toBeVisible();
   return actions;
 }
@@ -75,7 +75,7 @@ test('native cancellation keeps the current repository and suppresses dialog foc
   await expect(page.locator('.repository-opening')).toBeHidden();
   await openSwitcher(page);
   await expect(page.getByRole('button', { name: /^打开仓库…/ })).toBeEnabled();
-  await expect(page.locator('.repository-title h1')).toHaveText('existing-repository');
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('existing-repository');
   await expect(page.getByRole('alert')).toHaveCount(0);
   expect(actions.filter(request => request.action === 'open')).toHaveLength(0);
   expect(new URL(page.url()).searchParams.get('session')).toBe('initial');
@@ -87,7 +87,7 @@ test('non-repository selection shows an error and manual fallback without replac
   await openSwitcher(page);
   await page.getByRole('button', { name: /^打开仓库…/ }).click();
   await expect(page.getByRole('alert')).toContainText('所选文件夹不是 Git 仓库');
-  await expect(page.locator('.repository-title h1')).toHaveText('existing-repository');
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('existing-repository');
   await expect(page.getByText('existing contents', { exact: false })).toBeVisible();
   await expect(page.getByLabel('本地仓库路径')).not.toBeVisible();
   await page.getByText('手动输入路径', { exact: true }).click();
@@ -104,9 +104,9 @@ test('focus during validation cannot abort the chosen repository', async ({ page
   await page.getByRole('button', { name: /^打开仓库…/ }).click();
   await expect(page.getByRole('button', { name: /^打开仓库…/ })).toBeDisabled();
   await page.evaluate(() => window.dispatchEvent(new Event('focus')));
-  await expect(page.locator('.repository-title h1')).toHaveText('existing-repository');
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('existing-repository');
   validation.resolve(success(selected));
-  await expect(page.locator('.repository-title h1')).toHaveText('chosen-repository');
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('chosen-repository');
   await expect(page.getByRole('dialog', { name: '切换仓库', exact: true })).toBeHidden();
   await expect(page.getByRole('button', { name: '切换仓库：chosen-repository', exact: true })).toBeEnabled();
   expect(actions.filter(request => request.action === 'open')).toHaveLength(1);
@@ -123,7 +123,7 @@ test('explicit cancellation rejects a late folder selection', async ({ page }) =
   picker.resolve(success({ cancelled: false, path: selected.repository.worktreeRoot }));
   await expect(page.getByRole('button', { name: '切换仓库：existing-repository', exact: true })).toBeEnabled();
   await expect(page.locator('.repository-opening')).toBeHidden();
-  await expect(page.locator('.repository-title h1')).toHaveText('existing-repository');
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('existing-repository');
   expect(actions.filter(request => request.action === 'open')).toHaveLength(0);
 });
 
@@ -134,7 +134,7 @@ test('repository switcher is keyboard accessible, dismissible and reachable in a
   const dialog = page.getByRole('dialog', { name: '切换仓库', exact: true });
   await trigger.focus(); await page.keyboard.press('Enter');
   await expect(dialog).toBeVisible();
-  await expect(dialog.locator('.navigation-recent')).toContainText('chosen-repository');
+  await expect(dialog.getByTestId('recent-repository')).toContainText('chosen-repository');
   await expect.poll(() => dialog.evaluate(node => node.contains(document.activeElement))).toBe(true);
   await page.keyboard.press('Escape');
   await expect(dialog).toBeHidden(); await expect(trigger).toBeFocused();

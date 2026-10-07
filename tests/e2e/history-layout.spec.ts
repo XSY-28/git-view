@@ -12,7 +12,7 @@ async function call(action: Record<string, unknown>) {
   if (!result.ok) throw new Error(JSON.stringify(result));
   return result.data;
 }
-const row = (page: Page, index: number) => page.locator(`.commit-row[data-row="${index}"]`);
+const row = (page: Page, index: number) => page.locator(`[data-testid=commit-row][data-row="${index}"]`);
 const workspace = (page: Page) => page.locator('.history-workspace');
 const separator = (page: Page) => page.getByRole('separator', { name: '调整历史与详情宽度', exact: true });
 async function snapshot() { return Promise.all(['HEAD', 'index'].map(name => readFile(join(repo, '.git', name)))); }
@@ -24,10 +24,10 @@ async function openHistory(page: Page) {
   await expect(row(page, 0)).toContainText('layout commit 240');
 }
 async function scrollToRow(page: Page, index: number) {
-  const rowHeight = await page.locator('.commit-row').first().evaluate(node => node.getBoundingClientRect().height);
+  const rowHeight = await page.getByTestId('commit-row').first().evaluate(node => node.getBoundingClientRect().height);
   const top = index * rowHeight;
-  await page.locator('.history-scroll').evaluate((node, top) => { node.scrollTop = top; }, top);
-  await expect.poll(() => page.locator('.history-scroll').evaluate(node => node.scrollTop)).toBe(top);
+  await page.getByTestId('history-scroll').evaluate((node, top) => { node.scrollTop = top; }, top);
+  await expect.poll(() => page.getByTestId('history-scroll').evaluate(node => node.scrollTop)).toBe(top);
   await expect(row(page, index)).toBeInViewport();
   return top;
 }
@@ -90,7 +90,7 @@ test('history starts full width and explicit details preserve selection and scro
   await page.screenshot({ path: testInfo.outputPath('history-full-width.png'), fullPage: true });
   await row(page, 40).click(); await expectOpen(page);
   await expect(page.locator('.commit-detail')).toContainText('layout commit 200');
-  await expect(page.locator('.code-scroll')).toContainText('+version 200');
+  await expect(page.getByTestId('diff-scroll')).toContainText('+version 200');
   await expect(separator(page)).toBeVisible();
   await expect(row(page, 40)).toHaveAttribute('aria-pressed', 'true');
   await page.screenshot({ path: testInfo.outputPath('history-with-details.png'), fullPage: true });
@@ -98,17 +98,17 @@ test('history starts full width and explicit details preserve selection and scro
   await page.getByRole('button', { name: '关闭提交详情', exact: true }).click();
   await expectFullWidth(page);
   await expect(row(page, 40)).toHaveAttribute('aria-pressed', 'true');
-  expect(await page.locator('.history-scroll').evaluate(node => node.scrollTop)).toBe(top);
+  expect(await page.getByTestId('history-scroll').evaluate(node => node.scrollTop)).toBe(top);
   // The header control is outside the history workspace and disappears once
   // clicked. Escape must still close details after focus leaves that subtree.
   await page.getByRole('button', { name: '查看提交详情', exact: true }).click();
   await expectOpen(page);
   await page.keyboard.press('Escape'); await expectFullWidth(page);
   await expect(row(page, 40)).toHaveAttribute('aria-pressed', 'true');
-  expect(await page.locator('.history-scroll').evaluate(node => node.scrollTop)).toBe(top);
+  expect(await page.getByTestId('history-scroll').evaluate(node => node.scrollTop)).toBe(top);
   await row(page, 40).click(); await expectOpen(page);
   await page.keyboard.press('Escape'); await expectFullWidth(page);
-  expect(await page.locator('.history-scroll').evaluate(node => node.scrollTop)).toBe(top);
+  expect(await page.getByTestId('history-scroll').evaluate(node => node.scrollTop)).toBe(top);
 
   await row(page, 40).focus(); await row(page, 40).press('ArrowDown');
   await expect(row(page, 41)).toBeFocused(); await expect(row(page, 41)).toHaveAttribute('aria-pressed', 'true');
@@ -119,7 +119,7 @@ test('history starts full width and explicit details preserve selection and scro
   await row(page, 41).focus(); await page.keyboard.press('End');
   await expect(row(page, 199)).toBeFocused(); await expectClosed(page);
   await page.getByRole('button', { name: '定位 HEAD', exact: true }).click();
-  await expect.poll(() => page.locator('.history-scroll').evaluate(node => node.scrollTop)).toBe(0);
+  await expect.poll(() => page.getByTestId('history-scroll').evaluate(node => node.scrollTop)).toBe(0);
   await expect(row(page, 0)).toHaveAttribute('aria-pressed', 'true');
   await expect(row(page, 0).locator('.head-label')).toHaveText('HEAD');
   await expectFullWidth(page);
@@ -139,7 +139,7 @@ test('the details separator supports pointer and keyboard resizing without overl
   await expect.poll(async () => (await paneWidths(page)).history - start.history).toBeGreaterThan(30);
   const dragged = await paneWidths(page);
   expect(dragged.detail).toBeLessThan(start.detail - 30); expect(dragged.overlaps).toBe(false); expect(dragged.overflow).toBe(false);
-  expect(await page.locator('.history-scroll').evaluate(node => node.scrollTop)).toBe(top);
+  expect(await page.getByTestId('history-scroll').evaluate(node => node.scrollTop)).toBe(top);
   await divider.focus(); await divider.press('ArrowLeft');
   await expect.poll(async () => (await paneWidths(page)).history).toBeLessThan(dragged.history);
   const left = await paneWidths(page); await divider.press('ArrowRight');
@@ -164,10 +164,10 @@ test('narrow-window detail tabs and closing return to the same history selection
   await page.getByRole('button', { name: '关闭提交详情', exact: true }).click();
   await expectClosed(page); await expect(page.locator('.list-panel')).toBeVisible();
   await expect(row(page, 40)).toHaveAttribute('aria-pressed', 'true');
-  expect(await page.locator('.history-scroll').evaluate(node => node.scrollTop)).toBe(top);
+  expect(await page.getByTestId('history-scroll').evaluate(node => node.scrollTop)).toBe(top);
   await page.getByRole('button', { name: '查看详情', exact: true }).click(); await expectOpen(page);
   await expect(page.locator('.commit-detail')).toContainText('layout commit 200');
-  await expect(page.locator('.code-scroll')).toContainText('+version 200');
+  await expect(page.getByTestId('diff-scroll')).toContainText('+version 200');
   await expect(page.locator('.diff-read-state .spinner')).toBeHidden();
   await page.screenshot({ path: testInfo.outputPath('history-narrow-details.png'), fullPage: true });
   await page.keyboard.press('Escape'); await expectClosed(page);
@@ -193,7 +193,7 @@ test('late real commit and diff responses cannot reopen closed details or replac
     await expectOpen(page); await page.getByRole('button', { name: '关闭提交详情', exact: true }).click();
     await expectFullWidth(page); barrier.resolve(); await expect.poll(() => delivered).toBe(1); await rendered(page);
     await expectFullWidth(page); await expect(row(page, 35)).toHaveAttribute('aria-pressed', 'true');
-    expect(await page.locator('.history-scroll').evaluate(node => node.scrollTop)).toBe(top);
+    expect(await page.getByTestId('history-scroll').evaluate(node => node.scrollTop)).toBe(top);
 
     barrier = deferred(); delayedAction = 'commit-change';
     await row(page, 36).click(); await expect.poll(() => held).toBe(2); await expectOpen(page);
@@ -209,7 +209,7 @@ test('late real commit and diff responses cannot reopen closed details or replac
     barrier.resolve(); await expect.poll(() => delivered).toBe(3); await rendered(page);
     await expect(row(page, 38)).toHaveAttribute('aria-pressed', 'true');
     await expect(page.locator('.commit-detail')).toContainText('layout commit 202');
-    await expect(page.locator('.code-scroll')).toContainText('+version 202');
+    await expect(page.getByTestId('diff-scroll')).toContainText('+version 202');
     expect(await snapshot()).toEqual(before);
   } finally { barrier.resolve(); }
 });

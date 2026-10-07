@@ -15,8 +15,8 @@ async function call(fields: Record<string, unknown>) {
 test.beforeAll(async () => {
   root = repository(); write(root, 'old-name.txt', 'rename content\n'); write(root, 'shared.txt', 'base\n'); base = commit(root, 'comparison base'); fixtureGit(root, ['branch', 'topic']);
   write(root, 'main.txt', 'main branch contents\n'); a = commit(root, 'main unique');
-  fixtureGit(root, ['switch', 'topic']); fixtureGit(root, ['mv', 'old-name.txt', 'new-name.txt']); write(root, 'topic.txt', 'topic version 0\n'); b = commit(root, 'topic unique 0');
-  for (let n = 1; n <= 4; n++) { write(root, 'topic.txt', `topic version ${n}\n`); b = commit(root, `topic unique ${n}`); }
+  fixtureGit(root, ['switch', 'topic']); fixtureGit(root, ['mv', 'old-name.txt', 'new-name.txt']); write(root, 'topic.txt', 'topic version 0\n用户代码保持原文\n'); b = commit(root, 'topic unique 0');
+  for (let n = 1; n <= 4; n++) { write(root, 'topic.txt', `topic version ${n}\n用户代码保持原文\n`); b = commit(root, `topic unique ${n}`); }
   fixtureGit(root, ['switch', 'main']);
   other = repository(); write(other, 'other.txt', 'second repository\n'); commit(other, 'other root');
   server = await startLocalServer({ directory: temporaryDirectory(), webDirectory: resolve('dist/web'), queries: createRepositoryQueries(createGitAdapter({ limits: { historyPageSize: 2 } })) });
@@ -42,10 +42,10 @@ test('discarded pages and repository switches cannot mix observations; each work
   });
   await page.getByRole('button', { name: '比较', exact: true }).click(); await pending;
   await page.locator('.repository-switcher-trigger').click(); await page.getByText('手动输入路径', { exact: true }).click(); await page.getByLabel('本地仓库路径').fill(other); await page.getByRole('button', { name: '按路径打开', exact: true }).click();
-  await expect(page.locator('.repository-title h1')).toHaveText(other.split('/').at(-1)!); await page.getByRole('button', { name: '版本比较', exact: true }).click(); await page.getByRole('button', { name: '比较', exact: true }).click();
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText(other.split('/').at(-1)!); await page.getByRole('button', { name: '版本比较', exact: true }).click(); await page.getByRole('button', { name: '比较', exact: true }).click();
   await expect(page.locator('.comparison-content-tabs')).toContainText('A 独有提交 0'); releaseComparison(); await page.waitForTimeout(100);
   await expect(page.locator('.comparison-fixed-endpoints')).not.toContainText(b.slice(0, 10));
-  await page.locator('.repository-switcher-trigger').click(); await page.locator('.navigation-recent').filter({ hasText: root }).click();
+  await page.locator('.repository-switcher-trigger').click(); await page.getByTestId('recent-repository').filter({ hasText: root }).click();
   await expect(page.getByLabel('比较端点 A')).toHaveValue('refs/heads/topic'); await expect(page.getByLabel('比较端点 B')).toHaveValue('refs/heads/main');
   await expect(page.locator('.comparison-fixed-endpoints > span').first()).toContainText(b.slice(0, 10));
 });
@@ -54,7 +54,7 @@ async function open(page: Page) {
   const id = (await call({ action: 'open', path: root })).sessionId;
   const ticket = await call({ action: 'ticket', sessionId: id });
   await page.goto(`${server.origin}/?session=${id}#ticket=${ticket.ticket}`);
-  await expect(page.locator('.repository-title h1')).toHaveText(root.split('/').at(-1)!);
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText(root.split('/').at(-1)!);
   await page.getByRole('button', { name: '版本比较', exact: true }).click();
   await page.getByLabel('比较端点 A').selectOption('refs/heads/main');
   await page.getByLabel('比较端点 B').selectOption('refs/heads/topic');
@@ -66,14 +66,14 @@ test('compares both histories and trees, filters rename paths, swaps direction a
   await expect(page.locator('.comparison-fixed-endpoints')).toContainText(a.slice(0, 10)); await expect(page.locator('.comparison-fixed-endpoints')).toContainText(b.slice(0, 10));
   await expect(page.locator('.comparison-base')).toContainText(base.slice(0, 10)); await expect(page.locator('.comparison-workspace .file-row')).toHaveCount(3);
   await page.getByRole('button', { name: '共同祖先 → B', exact: true }).click(); await expect(page.locator('.comparison-workspace .file-row')).toHaveCount(2);
-  await page.locator('.comparison-workspace .file-row').filter({ hasText: 'topic.txt' }).click(); await expect(page.locator('.code-scroll')).toContainText('+topic version 4');
+  await page.locator('.comparison-workspace .file-row').filter({ hasText: 'topic.txt' }).click(); await expect(page.getByTestId('diff-scroll')).toContainText('+topic version 4');
   await page.getByLabel('筛选比较文件').fill('old-name'); await expect(page.locator('.comparison-workspace .file-row')).toHaveCount(1); await expect(page.locator('.file-row')).toContainText('new-name.txt');
   await expect(page.locator('.diff-view')).toHaveCount(0);
   await page.getByRole('button', { name: '刷新仓库', exact: true }).click();
   await expect(page.locator('.comparison-read')).toHaveAttribute('data-phase', 'idle');
   await expect(page.locator('.comparison-workspace .file-row')).toHaveCount(1); await expect(page.locator('.diff-view')).toHaveCount(0);
   await page.getByLabel('筛选比较文件').fill(''); await page.locator('.comparison-workspace .file-row').first().focus(); await page.keyboard.press('End');
-  await expect(page.locator('.comparison-workspace .file-row').last()).toBeFocused(); await expect(page.locator('.code-scroll')).toContainText('+topic version 4');
+  await expect(page.locator('.comparison-workspace .file-row').last()).toBeFocused(); await expect(page.getByTestId('diff-scroll')).toContainText('+topic version 4');
   await page.getByRole('button', { name: 'A 独有提交 1', exact: true }).click(); await expect(page.locator('.comparison-commit')).toHaveText(/main unique/);
   await page.getByRole('button', { name: 'B 独有提交 5', exact: true }).click(); await expect(page.locator('.comparison-commit')).toHaveCount(2);
   await page.getByRole('button', { name: '继续加载', exact: true }).click(); await expect(page.locator('.comparison-commit')).toHaveCount(4);
@@ -81,7 +81,7 @@ test('compares both histories and trees, filters rename paths, swaps direction a
   await page.getByRole('button', { name: /文件差异 2/ }).click(); await page.getByRole('button', { name: '交换 A 与 B', exact: true }).click();
   await expect(page.locator('.comparison-fixed-endpoints > span').first()).toContainText(b.slice(0, 10));
   await page.getByRole('button', { name: 'A → B', exact: true }).click(); await page.locator('.comparison-workspace .file-row').filter({ hasText: 'topic.txt' }).click();
-  await expect(page.locator('.code-scroll')).toContainText('-topic version 4');
+  await expect(page.getByTestId('diff-scroll')).toContainText('-topic version 4');
   await page.getByRole('button', { name: 'B 独有提交 1', exact: true }).click(); await page.locator('.comparison-commit').click();
   await expect(page.locator('.commit-detail')).toContainText('main unique');
   expect(fingerprint(root)).toBe(before); expect(errors).toEqual([]);
@@ -129,8 +129,11 @@ test('cancels a comparison, retries and keeps language, commit input and narrow 
   await page.getByLabel('比较端点 A').selectOption('commit'); await page.getByLabel('A 提交 ID').fill('HEAD~1'); await expect(page.getByRole('button', { name: '比较', exact: true })).toBeDisabled();
   await page.getByLabel('A 提交 ID').fill(base.slice(0, 10)); await page.getByRole('button', { name: '比较', exact: true }).click(); await expect(page.locator('.comparison-workspace .file-row')).toHaveCount(2);
   await page.getByLabel('界面语言').selectOption('en'); await expect(page.getByLabel('Comparison endpoint A')).toBeVisible(); await expect(page.getByRole('button', { name: 'Merge base → B', exact: true })).toBeVisible();
-  expect(await page.locator('.comparison-view').innerText()).not.toMatch(/[\u4e00-\u9fff]/);
+  await expect(page.getByLabel('Comparison endpoint B')).toBeVisible();
+  await expect(page.getByLabel('Filter comparison files')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'A → B', exact: true })).toBeVisible();
   await page.setViewportSize({ width: 390, height: 844 }); await page.getByRole('button', { name: 'File list', exact: true }).click(); await page.locator('.comparison-workspace .file-row').filter({ hasText: 'topic.txt' }).click();
-  await expect(page.locator('.diff-toolbar')).toBeVisible(); await expect(page.locator('.code-scroll')).toContainText('+topic version 4');
+  await expect(page.locator('.diff-toolbar')).toBeVisible(); await expect(page.getByTestId('diff-scroll')).toContainText('+topic version 4');
+  await expect(page.getByTestId('diff-scroll')).toContainText('用户代码保持原文');
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
 });

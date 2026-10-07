@@ -44,7 +44,7 @@ test('real partial staging, history, refresh and tool layout', async ({ page }) 
   // Selection is driven by accessible names; each comparison has its own button.
   const hello = page.getByRole('button').filter({ hasText: 'hello.txt' });
   await hello.first().click();
-  await expect(page.locator('.code-scroll').getByText('+version two staged', { exact: false })).toBeInViewport();
+  await expect(page.getByTestId('diff-scroll').getByText('+version two staged', { exact: false })).toBeInViewport();
   await expect(page.locator('.diff-baseline')).toContainText(/HEAD(?: [0-9a-f]{10})?\s*→\s*暂存区/);
   const list = await page.locator('.list-panel').boundingBox();
   const detail = await page.locator('.detail-panel').boundingBox();
@@ -52,8 +52,8 @@ test('real partial staging, history, refresh and tool layout', async ({ page }) 
   expect(detail!.width).toBeGreaterThan(list!.width * 2);
   await page.screenshot({ path: 'test-results/current-changes.png', fullPage: true });
   await hello.nth(1).click();
-  await expect(page.locator('.code-scroll').getByText('+version three working', { exact: false })).toBeVisible();
-  await expect(page.locator('.code-scroll').getByText('-version two staged', { exact: false })).toBeVisible();
+  await expect(page.getByTestId('diff-scroll').getByText('+version three working', { exact: false })).toBeVisible();
+  await expect(page.getByTestId('diff-scroll').getByText('-version two staged', { exact: false })).toBeVisible();
   await expect(page.locator('.diff-baseline')).toContainText(/暂存区\s*→\s*工作区/);
   await page.getByRole('navigation', { name: '主视图', exact: true }).getByRole('button', { name: '历史', exact: true }).click();
   await expect(page.getByRole('button').filter({ hasText: '首次提交' }).first()).toBeVisible();
@@ -62,13 +62,13 @@ test('real partial staging, history, refresh and tool layout', async ({ page }) 
   await expect(page.locator('.commit-metadata')).toContainText('相对空树');
   await expect(page.locator('.commit-metadata dd code').first()).toHaveText(/[0-9a-f]{40}/);
   await page.locator('.commit-metadata summary').click();
-  await expect(page.locator('.code-scroll').getByText('+ignored.txt', { exact: false })).toBeInViewport();
+  await expect(page.getByTestId('diff-scroll').getByText('+ignored.txt', { exact: false })).toBeInViewport();
   expect(await page.evaluate(() => window.scrollY)).toBe(0);
   await page.screenshot({ path: 'test-results/history.png', fullPage: true });
   await page.getByRole('button', { name: /当前改动/ }).first().click();
   await writeFile(join(repo, 'hello.txt'), 'version four after refresh\n');
   await page.getByRole('button', { name: /刷新/ }).first().click();
-  await expect(page.locator('.code-scroll').getByText('+version four after refresh', { exact: false })).toBeVisible();
+  await expect(page.getByTestId('diff-scroll').getByText('+version four after refresh', { exact: false })).toBeVisible();
   await page.reload();
   await expect(page.getByText('hello.txt', { exact: true }).first()).toBeVisible();
   await page.locator('.group-unstaged .file-row').filter({ hasText: 'hello.txt' }).click();
@@ -77,7 +77,7 @@ test('real partial staging, history, refresh and tool layout', async ({ page }) 
   await writeFile(join(repo, 'hello.txt'), 'version five after focus\n');
   await page.waitForTimeout(750);
   await page.bringToFront();
-  await expect(page.locator('.code-scroll').getByText('+version five after focus', { exact: false })).toBeVisible();
+  await expect(page.getByTestId('diff-scroll').getByText('+version five after focus', { exact: false })).toBeVisible();
   await other.close();
   await writeFile(join(repo, 'hello.txt'), 'version two staged\n');
   await page.waitForTimeout(750);
@@ -86,7 +86,7 @@ test('real partial staging, history, refresh and tool layout', async ({ page }) 
   // the manual refresh. Assert durable selection/diff state, not toast timing.
   await expect(page.locator('.group-unstaged .file-row').filter({ hasText: 'hello.txt' })).toHaveCount(0);
   await expect(page.locator('.file-row[aria-pressed="true"]')).toHaveCount(0);
-  await expect(page.locator('.code-scroll')).toHaveCount(0);
+  await expect(page.getByTestId('diff-scroll')).toHaveCount(0);
   await page.setViewportSize({ width: 390, height: 844 });
   const panels = page.getByRole('navigation', { name: '窄窗口面板' });
   await expect(panels.getByRole('button')).toHaveText(['文件列表', '查看详情']);
@@ -99,7 +99,7 @@ test('real partial staging, history, refresh and tool layout', async ({ page }) 
   await page.getByRole('navigation', { name: '主视图', exact: true }).getByRole('button', { name: /^当前改动/ }).click();
   await panels.getByRole('button', { name: '文件列表' }).click();
   await page.locator('.group-staged .file-row').filter({ hasText: 'hello.txt' }).click();
-  await expect(page.locator('.code-scroll').getByText('+version two staged', { exact: false })).toBeVisible();
+  await expect(page.getByTestId('diff-scroll').getByText('+version two staged', { exact: false })).toBeVisible();
   await expect(page.locator('.list-panel')).toBeHidden();
   await page.screenshot({ path: 'test-results/mobile.png', fullPage: true });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);

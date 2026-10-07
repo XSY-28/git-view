@@ -57,7 +57,7 @@ export function ComparisonView({ session, navigation, initialOptions, initialCom
     </form>
     <ReadFeedback state={read.comparison} hasValue={Boolean(result)} scope={t('版本比较')} className="comparison-read" onCancel={() => read.cancel('compare')} onRetry={() => { if (valid) read.compare(options, true); }}/>
     {result && <div className={`comparison-snapshot ${!read.fresh ? 'stale-content' : ''}`}>
-      <details className="comparison-resolved-details" key={result.comparisonId}>
+      <details className="comparison-resolved-details" key={JSON.stringify([result.a, result.b, result.mergeBases])}>
         <summary className="comparison-snapshot-summary">
           <span className="comparison-fixed-endpoints">{(['a', 'b'] as const).map(side => <span key={side}><strong>{side.toUpperCase()}</strong>{result[side].selector.kind !== 'commit' && <span title={result[side].label}>{displayRef(result[side].label)}</span>}<code title={result[side].oid}>{result[side].oid.slice(0, 10)}</code></span>)}</span>
           <span className="comparison-base"><span>{t('共同祖先')}</span>{result.mergeBases.oids.map(oid => <code key={oid} title={oid}>{oid.slice(0, 10)}</code>)}</span>

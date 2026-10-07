@@ -25,7 +25,7 @@ async function open(page: Page) {
   const ticket = await call({ action: 'ticket', sessionId });
   await page.goto(`${origin}/?session=${sessionId}#ticket=${ticket.ticket}`);
   await expect(page.locator('#app-language')).toBeEnabled();
-  await expect(page.locator('.code-scroll')).toBeVisible();
+  await expect(page.getByTestId('diff-scroll')).toBeVisible();
 }
 test.beforeAll(async () => {
   folder = await mkdtemp(join(tmpdir(), 'git-view-language-ui-')); repo = join(folder, '当前分支'); runtime = join(folder, 'runtime'); await mkdir(repo);
@@ -45,7 +45,7 @@ test('English default, live switching, page reopen and process restart remember 
   await expect(page.locator('.group-unstaged summary')).toContainText('Unstaged');
   await expect(page.locator('.diff-baseline')).toContainText('Index');
   await expect(page.locator('.diff-baseline')).toContainText('Working tree');
-  await expect(page.locator('.code-scroll')).toContainText('用户内容保持原文');
+  await expect(page.getByTestId('diff-scroll')).toContainText('用户内容保持原文');
   await expect(page.getByRole('button', { name: 'Switch repository: 当前分支', exact: true })).toBeVisible();
   const selectedId = await page.locator('.file-row[aria-pressed="true"]').getAttribute('data-entry-id');
   await page.getByRole('button', { name: 'Side by side', exact: true }).click();
@@ -72,7 +72,7 @@ test('English default, live switching, page reopen and process restart remember 
     await fresh.getByLabel('界面语言').selectOption('en');
     await expect(fresh.getByLabel('Interface language')).toHaveValue('en');
     await fresh.getByRole('button', { name: /^History/ }).click();
-    await fresh.locator('.commit-row').first().click();
+    await fresh.getByTestId('commit-row').first().click();
     await expect(fresh.locator('.commit-summary h2')).toHaveText('提交说明');
     await fresh.locator('.commit-metadata summary').click();
     await expect(fresh.locator('.commit-metadata')).toContainText('Compared with the empty tree (initial commit)');

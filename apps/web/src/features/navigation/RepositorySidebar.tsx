@@ -24,7 +24,7 @@ export function RepositorySidebar({ navigation, scope, selectedRef, readState, o
     {Object.entries(groups).map(([kind, label]) => {
       const entries = refs?.filter(ref => ref.kind === kind);
       if (!entries?.length) return null;
-      return <details key={kind} open><summary>{t(label)}</summary>{entries.map(ref => <button className="navigation-ref" key={ref.name}
+      return <details key={kind} open><summary>{t(label)}</summary>{entries.map(ref => <button data-testid="navigation-ref" className="navigation-ref" key={ref.name}
         aria-pressed={scope === 'ref' && selectedRef === ref.name} title={t('查看 {0} 的提交历史\n{1}', [referenceName(ref.name), ref.oid])} onClick={() => onFilter('ref', ref.name)}>
         <span>{referenceName(ref.name)}</span>{ref.current && <small className="current-branch-marker">{t("当前分支")}</small>}
       </button>)}</details>;

@@ -40,16 +40,22 @@ export async function bootstrap(sessionId: string, ticket: string | null): Promi
   return sessionSchema.parse(response.data.data);
 }
 
-export function subscribeRepositoryInvalidation(sessionId: string, onInvalidate: () => void, onError: (error: unknown) => void): () => void {
+export async function readRepositoryWatch(sessionId: string, signal?: AbortSignal) {
+  const response = responseSchema.or(z.object({ schemaVersion: z.literal(1), ok: z.literal(true), data: watchStateSchema })).parse(await transport.watch(sessionId, signal));
+  if (!response.ok) throw new ApiError(response.error);
+  return watchStateSchema.parse(response.data);
+}
+
+export function subscribeRepositoryInvalidation(sessionId: string, onInvalidate: () => void, onError: (error: unknown) => void, onObservation?: (state: z.infer<typeof watchStateSchema>) => void): () => void {
   const controller = new AbortController();
   let revision: number | undefined;
   let timer: ReturnType<typeof setTimeout> | undefined;
   let debounce: ReturnType<typeof setTimeout> | undefined;
   const poll = async () => {
     try {
-      const response = responseSchema.or(z.object({ schemaVersion: z.literal(1), ok: z.literal(true), data: watchStateSchema })).parse(await transport.watch(sessionId, controller.signal));
-      if (!response.ok) throw new ApiError(response.error);
-      const state = watchStateSchema.parse(response.data);
+      const state = await readRepositoryWatch(sessionId, controller.signal);
+      if (controller.signal.aborted) return;
+      onObservation?.(state);
       if (!state.watching) throw new Error('文件监听不可用；返回窗口时仍会刷新，也可手动刷新。');
       if (revision !== undefined && revision !== state.revision) {
         clearTimeout(debounce);

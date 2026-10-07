@@ -1,5 +1,7 @@
 // Chinese source messages remain stable; repository content is never passed through this catalog.
 export const englishMessages: Record<string, string> = {
+  '返回搜索结果': 'Back to search results',
+  '返回文件历史': 'Back to file history',
   "历史": "History",
   "历史内容": "History contents",
   "更多": "More",

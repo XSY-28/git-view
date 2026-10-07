@@ -8,7 +8,7 @@ Git View 是一个本地 Git 图形工具。它把 HEAD、暂存区和工作区�
 
 ![Git View 的历史页与紧凑文件差异，浏览器示例仓库](docs/verification/screenshots/history-simplification-browser.png)
 
-历史入口与差异布局的当前验证范围见[界面精简记录](docs/verification/2026-10-07-history-simplification.md)。
+历史入口与差异布局见[界面精简记录](docs/verification/2026-10-07-history-simplification.md)，返回阅读位置与窗口刷新行为的验证范围见[阅读返回记录](docs/verification/2026-10-07-reading-return.md)。
 
 界面默认英文，顶部可切换为中文并保存选择。仓库名、路径、提交说明、文件内容和 Git 诊断保留原文。仓库由本机 Git 读取，无需远程服务。
 
@@ -44,7 +44,7 @@ open "$HOME/Applications/Git View.app"
 
 打开应用后，按 `⌘O` 或点击顶部 **Open repository…（打开仓库…）**，选择一个本地 Git 仓库。也可以展开仓库切换器，在 **Enter path manually（手动输入路径）** 中填写绝对路径。
 
-默认进入当前改动视图。点击文件查看差异；同一文件的已暂存和未暂存条目分别比较 HEAD → 暂存区、暂存区 → 工作区。差异工具栏可切换单列或并排，并选择是否折行；比较基准始终显示，点击 **View details（查看详情）** 可展开完整路径、版本 ID 和读取时间。按 `⌘R` 手动刷新，仓库文件变化也会触发更新。
+默认进入当前改动视图。点击文件查看差异；同一文件的已暂存和未暂存条目分别比较 HEAD → 暂存区、暂存区 → 工作区。差异工具栏可切换单列或并排，并选择是否折行；比较基准始终显示，点击 **View details（查看详情）** 可展开完整路径、版本 ID 和读取时间。按 `⌘R` 手动刷新，仓库文件变化也会触发更新。切回窗口时先核对仓库概览、引用与监听状态；确认没有变化时，保留当前阅读结果和展开状态。
 
 安装后的应用自带 Node 运行时，仍需系统 Git；运行时不需要另装 Node、Rust 或 Swift。当前为未公证的本地构建包。
 
@@ -97,7 +97,7 @@ node scripts/create-demo.mjs
 
 ![比较共同祖先与 topic 分支的文件差异，精简前安装版](docs/verification/screenshots/revision-comparison-native.png)
 
-A/B 也可以选择 HEAD、标签、已有远程跟踪引用或完整/短提交 ID。当前布局将解析后的 A/B 和共同祖先显示为一行摘要；点击 **View details（查看详情）** 展开完整提交 ID 与读取时间。后续分页基于同一对端点读取；刷新或重新比较会创建新的结果。交换 A/B 会重新比较，文件列表支持新旧路径筛选、键盘导航和单列/并排差异。
+A/B 也可以选择 HEAD、标签、已有远程跟踪引用或完整/短提交 ID。当前布局将解析后的 A/B 和共同祖先显示为一行摘要；点击 **View details（查看详情）** 展开完整提交 ID 与读取时间。后续分页基于同一对端点读取；完整刷新或重新比较会创建新的结果，端点与共同祖先相同时保留详情展开状态。交换 A/B 会重新比较，文件列表支持新旧路径筛选、键盘导航和单列/并排差异。
 
 只有能确定唯一共同祖先时，才启用共同祖先 → B 模式。浅历史会明确标注计数不完整；没有共同祖先或存在多个共同祖先时，不会任意选择一个基准，但仍可比较本机已有的 A/B 提交树。该视图只读取已存储的 Git 对象，不把工作区改动混入比较，也不联网获取缺失对象。设计与验证范围见[比较设计](docs/decisions/0003-revision-comparison.md)和[版本比较验证](docs/verification/2026-10-06-revision-comparison.md)。
 
@@ -116,7 +116,11 @@ A/B 也可以选择 HEAD、标签、已有远程跟踪引用或完整/短提交 
 
 图中前三行分别来自不同提交。行来源描述 Git 记录的最后一次行改动，不推断整段逻辑的作者；未提交的工作内容不会混入结果。文件历史沿第一父链追踪普通重命名，行来源则使用对应版本的 Git 祖先记录，两者的范围不同。
 
-离开历史页再返回时，会恢复该 worktree 上次查看的历史子页与查询条件；需要回到提交列表时，点击 **Commit list（提交列表）**。历史页的 **More（更多）** 中还可以查看 **stash** 和 **reflog**。选中 stash 后，三个快照分别回答：
+从搜索、文件历史或行来源进入提交详情后，点击 **Back to search results / Back to file history（返回搜索结果/返回文件历史）**，可恢复已加载的记录、选中项、滚动位置与键盘焦点；文件历史还保留原来的差异或行来源视图。
+
+离开历史页再返回时，会恢复该 worktree 上次查看的子页与查询条件。阅读状态保存在当前窗口内，各 worktree 分开保存；仓库变化后重新读取已加载范围，重新打开应用时不恢复结果。仓库未变化时，已取消或失败的读取不会因切回页面自动重试，可用页面中的重试或重新读取按钮继续。需要回到提交列表时，点击 **Commit list（提交列表）**。
+
+历史页的 **More（更多）** 中还可以查看 **stash** 和 **reflog**。选中 stash 后，三个快照分别回答：
 
 | 快照 | 比较内容 |
 | --- | --- |
@@ -168,13 +172,15 @@ node dist/cli.mjs inspect --repo "/absolute/path/to/your/repository" --json
 修改源码后，在项目根目录运行：
 
 ```sh
-pnpm check                     # 类型检查、源码测试与构建
+pnpm check                     # 编号副本检查、类型检查、源码测试与构建
 pnpm exec playwright install chrome
 pnpm test:e2e                  # 界面回归
 pnpm test:install-desktop      # macOS 安装与恢复测试
 ```
 
-测试写入使用新建的临时仓库。源码检查和手动桌面验收各有范围，CI 通过不等于所有平台的原生界面已验收。模块职责见[实现基线](docs/decisions/0001-implementation-baseline.md)、[桌面架构](docs/decisions/0002-desktop-host.md)、[版本比较设计](docs/decisions/0003-revision-comparison.md)和[历史调查设计](docs/decisions/0004-history-investigation.md)，语言默认值与持久化行为见[语言验证](docs/verification/2026-10-06-language.md)。
+`pnpm check:duplicates` 也可单独检查与原件对应的 `文件 2.ext` 等编号副本。检查失败时，先比较并归档到项目之外，再整理源码；检查本身不会删除文件。副本规则、测试定位与读取状态的约定见[维护契约](docs/decisions/0005-maintenance-contracts.md)。
+
+测试写入使用新建的临时仓库。源码检查和手动桌面验收各有范围，CI 通过不等于所有平台的原生界面已验收。模块职责见[实现基线](docs/decisions/0001-implementation-baseline.md)、[桌面架构](docs/decisions/0002-desktop-host.md)、[版本比较设计](docs/decisions/0003-revision-comparison.md)和[历史调查设计](docs/decisions/0004-history-investigation.md)，语言默认值与持久化行为见[语言验证](docs/verification/2026-10-06-language.md)。本轮维护与回归证据见[维护验收](docs/verification/2026-10-07-maintenance.md)。
 
 欢迎通过 [Issues](https://github.com/XSY-28/git-view/issues) 报告问题或提交 Pull Request。请提供平台、版本、复现步骤和预期结果，并移除日志或截图中的私人信息。
 

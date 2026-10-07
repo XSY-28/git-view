@@ -16,6 +16,15 @@ describe('refresh scheduling', () => {
 });
 
 describe('worktree view memory', () => {
+  it('isolates investigation results and reading positions by worktree across ordinary view saves', () => {
+    const controller = new RepositoryController(); controller.activate('main-worktree');
+    const reading = controller.investigationReading();
+    reading.search = { selected: 'commit-id', position: { pageTop: 120, scroll: { list: { top: 440, left: 0 } } } };
+    controller.save({ view: 'history', scope: 'head', allHistoryOrder: 'date' });
+    controller.activate('linked-worktree'); expect(controller.investigationReading()).toEqual({});
+    controller.activate('main-worktree'); expect(controller.investigationReading()).toBe(reading);
+    expect(controller.investigationReading().search?.position.scroll.list.top).toBe(440);
+  });
   it('preserves investigation inputs through view saves and isolates linked worktrees', () => {
     const controller = new RepositoryController(); controller.activate('main-worktree');
     const options = { tab: 'file' as const, search: { scope: 'all' as const, field: 'subject' as const, term: 'fix' }, file: { endpoint: { kind: 'commit' as const, oid: 'a'.repeat(40) }, path: '原始 文件.ts' }, reflogRef: 'refs/heads/topic' };

@@ -1,12 +1,12 @@
-import { useEffect, useRef, type Dispatch, type SetStateAction } from 'react';
+import { useEffect, useRef } from 'react';
 import { z } from 'zod';
 import { queryKey, type ApiRequest, type ReadStamp, type RepositorySession } from '@git-view/contracts';
 import { api, ApiError, errorMessage } from '../../state/api';
 import { RequestGate } from '../../state/request-gate';
-import type { ReadState } from '../feedback/ReadFeedback';
+import type { Resource, ResourceSetter } from '../../state/resource';
+export type { Resource } from '../../state/resource';
 
-export type Resource<T> = ReadState & { value?: T; stamp?: ReadStamp };
-export type Setter<T> = Dispatch<SetStateAction<Resource<T>>>;
+export type Setter<T> = ResourceSetter<T>;
 type InvestigationRequest = Extract<ApiRequest, { action: 'search' | 'file-history' | 'file-history-change' | 'blame' | 'records' | 'stash-detail' | 'stash-change' }>;
 type Fields = InvestigationRequest extends infer T ? T extends InvestigationRequest ? Omit<T, 'schemaVersion' | 'requestId' | 'sessionId' | 'generation'> : never : never;
 export const empty = <T,>(): Resource<T> => ({ loading: false });
@@ -14,8 +14,8 @@ export const stale = <T,>(previous: Resource<T>): Resource<T> => ({ ...previous,
 type Pager<T> = { count: (value: T) => number; cursor: (value: T) => string | undefined; merge: (previous: T, next: T) => T; reloadTo?: number; appendTo?: T };
 
 /** All investigation reads use the same stamp checks, including errors and pages. */
-export function useInvestigationReads(session: RepositorySession, blocked: boolean, onCancellation: (cancelled: boolean) => void) {
-  const gate = useRef(new RequestGate()); const cancelled = useRef(new Set<string>());
+export function useInvestigationReads(session: RepositorySession, blocked: boolean, onCancellation: (cancelled: boolean) => void, initiallyCancelled: string[] = []) {
+  const gate = useRef(new RequestGate()); const cancelled = useRef(new Set(initiallyCancelled));
   const active = useRef({ session, blocked }); active.current = { session, blocked };
   const context = `${session.sessionId}:${session.generation}:${blocked}`; const current = useRef('');
   if (current.current !== context) { current.current = context; gate.current.setContext(session.sessionId, session.generation); }
@@ -59,6 +59,6 @@ export function useInvestigationReads(session: RepositorySession, blocked: boole
     setter(previous => ({ ...previous, loading: false, cancelled: true, error: undefined, stale: Boolean(previous.value) })); update();
   }
   function fresh<T>(resource: Resource<T>) { return !blocked && !resource.loading && !resource.error && !resource.stale && !resource.cancelled && resource.stamp?.sessionId === session.sessionId && resource.stamp.generation === session.generation; }
-  useEffect(() => () => { gate.current.cancelAll(); onCancellation(false); }, []);
+  useEffect(() => { update(); return () => { gate.current.cancelAll(); onCancellation(false); }; }, []);
   return { query, clear, cancel, fresh, resume };
 }

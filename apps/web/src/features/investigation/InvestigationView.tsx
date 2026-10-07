@@ -5,6 +5,7 @@ import { SearchPanel } from './SearchPanel';
 import { FileHistoryPanel } from './FileHistoryPanel';
 import { RecordsPanel } from './RecordsPanel';
 import type { InvestigationMemory, InvestigationTab } from './options';
+import type { InvestigationReadingMemory, OpenInvestigationCommit } from './reading-memory';
 import './investigation.css';
 
 export function HistoryNavigation({ options, commits, blocked, onSelect }: { options: InvestigationMemory; commits: boolean; blocked: boolean; onSelect: (tab: InvestigationTab | 'commits') => void }) {
@@ -39,9 +40,9 @@ export function HistoryNavigation({ options, commits, blocked, onSelect }: { opt
     </details>
   </nav>;
 }
-export function InvestigationView({ session, navigation, options, blocked, mobilePanel, onChange, onShowDetail, onOpenCommit, onCompare, onCancellation }: { session: RepositorySession; navigation?: Navigation; options: InvestigationMemory; blocked: boolean; mobilePanel: 'navigation' | 'list' | 'diff'; onChange: (options: InvestigationMemory) => void; onShowDetail: () => void; onOpenCommit: (oid: string) => void; onCompare: (options: ComparisonOptions) => void; onCancellation: (cancelled: boolean) => void }) {
+export function InvestigationView({ session, navigation, options, blocked, memory, mobilePanel, onChange, onShowDetail, onOpenCommit, onCompare, onCancellation }: { session: RepositorySession; navigation?: Navigation; options: InvestigationMemory; blocked: boolean; memory: InvestigationReadingMemory; mobilePanel: 'navigation' | 'list' | 'diff'; onChange: (options: InvestigationMemory) => void; onShowDetail: () => void; onOpenCommit: OpenInvestigationCommit; onCompare: (options: ComparisonOptions) => void; onCancellation: (cancelled: boolean) => void }) {
   const props = { session, navigation, blocked, mobilePanel, onShowDetail, onOpenCommit, onCancellation };
-  return <div className="investigation-view">
-    {options.tab === 'search' ? <SearchPanel {...props} initial={options.search} onChange={search => onChange({ ...options, search })}/> : options.tab === 'file' ? <FileHistoryPanel {...props} initial={options.file} onChange={file => onChange({ ...options, file })}/> : <RecordsPanel key={options.tab} {...props} kind={options.tab} initialRef={options.reflogRef} onChangeRef={reflogRef => onChange({ ...options, reflogRef })} onCompare={onCompare}/>}
+  return <div data-testid="investigation-view" className="investigation-view">
+    {options.tab === 'search' ? <SearchPanel {...props} memory={memory} initial={options.search} onChange={search => onChange({ ...options, search })}/> : options.tab === 'file' ? <FileHistoryPanel {...props} memory={memory} initial={options.file} onChange={file => onChange({ ...options, file })}/> : <RecordsPanel key={options.tab} {...props} kind={options.tab} initialRef={options.reflogRef} onChangeRef={reflogRef => onChange({ ...options, reflogRef })} onCompare={onCompare}/>}
   </div>;
 }

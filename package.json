@@ -13,7 +13,7 @@
   },
   "scripts": {
     "build": "node scripts/build.mjs",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "pnpm check:duplicates && tsc --noEmit",
     "test": "vitest run",
     "test:e2e": "playwright test",
     "check": "pnpm typecheck && pnpm test && pnpm build",
@@ -25,7 +25,8 @@
     "install:desktop": "node scripts/install-desktop.mjs",
     "repair:desktop-search": "node scripts/install-desktop.mjs --repair-search",
     "test:install-desktop": "node --test scripts/install-desktop.test.mjs",
-    "verify:installed": "node scripts/verify-installed.mjs"
+    "verify:installed": "node scripts/verify-installed.mjs",
+    "check:duplicates": "node --test scripts/check-duplicate-files.test.mjs && node scripts/check-duplicate-files.mjs"
   },
   "dependencies": {
     "react": "19.3.0",

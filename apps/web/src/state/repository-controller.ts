@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { REFRESH_TIMING } from '../../../shared/transport';
 import type { ChangeEntry, ComparisonOptions, HistoryOrder } from '@git-view/contracts';
 import type { InvestigationMemory } from '../features/investigation/options';
+import type { InvestigationReadingMemory } from '../features/investigation/reading-memory';
 
 export type FileListScope = 'changes' | 'history';
 export type MainView = FileListScope | 'comparison' | 'investigation';
@@ -33,6 +34,7 @@ export interface ViewMemory {
 export class RepositoryController {
   private memories = new Map<string, ViewMemory>();
   private active?: string;
+  private readingMemories = new Map<string, InvestigationReadingMemory>();
   pendingPath?: string;
   explicitOpen = false;
   activate(worktreeId: string): ViewMemory {
@@ -54,6 +56,12 @@ export class RepositoryController {
   }
   comparison(options?: ComparisonOptions): ComparisonOptions | undefined { const memory = this.active && this.memories.get(this.active); if (!memory) return; if (options) memory.comparison = options; return memory.comparison; }
   investigation(options?: InvestigationMemory): InvestigationMemory { const memory = this.active && this.memories.get(this.active); if (!memory) return { tab: 'search' }; if (options) memory.investigation = options; return memory.investigation ?? { tab: 'search' }; }
+  investigationReading(): InvestigationReadingMemory {
+    if (!this.active) return {};
+    let memory = this.readingMemories.get(this.active);
+    if (!memory) { memory = {}; this.readingMemories.set(this.active, memory); }
+    return memory;
+  }
   position(key: string) { return this.active ? this.memories.get(this.active)?.scroll[key] || 0 : 0; }
   scroll(key: string, top: number) { if (this.active) this.memories.get(this.active)!.scroll[key] = top; }
 }

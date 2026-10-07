@@ -14,14 +14,14 @@ async function call(fields: Record<string, unknown>) {
 test.beforeAll(async () => {
   root = repository(); write(root, 'old-file.txt', 'first\nsecond\n'); initial = commit(root, 'alpha root');
   write(root, 'old-file.txt', 'first\nedited\n'); beforeRename = commit(root, 'alpha edit'); fixtureGit(root, ['mv', 'old-file.txt', 'code.txt']); renamed = commit(root, 'alpha rename');
-  write(root, 'code.txt', 'first\nedited\nthird\n'); commit(root, 'alpha third'); write(root, 'code.txt', 'first\nedited\nthird\nfourth\n'); latest = commit(root, 'alpha fourth');
+  write(root, 'code.txt', 'first\nedited\nthird\n'); commit(root, 'alpha third'); write(root, 'code.txt', 'first\nedited\nthird\nfourth 用户代码保持原文\n'); latest = commit(root, 'alpha fourth');
   fixtureGit(root, ['branch', 'topic']);
   // A commit reachable only through topic proves the integrated search retains
   // its all-reference semantics without changing HEAD or its reflog sequence.
   const branchTree = fixtureGit(root, ['rev-parse', 'HEAD^{tree}']).trim();
   const branchOnly = fixtureGit(root, ['commit-tree', branchTree, '-p', latest, '-m', 'topic-only history']).trim();
   fixtureGit(root, ['update-ref', 'refs/heads/topic', branchOnly]);
-  write(root, 'code.txt', 'index snapshot\n'); fixtureGit(root, ['add', '--', 'code.txt']); write(root, 'code.txt', 'working snapshot\n'); write(root, 'untracked.txt', 'untracked snapshot\n'); fixtureGit(root, ['stash', 'push', '-u', '-m', 'saved local work']);
+  write(root, 'code.txt', 'index snapshot\n'); fixtureGit(root, ['add', '--', 'code.txt']); write(root, 'code.txt', 'working snapshot 用户暂存内容保持原文\n'); write(root, 'untracked.txt', 'untracked snapshot\n'); fixtureGit(root, ['stash', 'push', '-u', '-m', 'saved local work']);
   other = repository(); write(other, 'second.txt', 'second repository\n'); commit(other, 'second root');
   server = await startLocalServer({ directory: temporaryDirectory(), webDirectory: resolve('dist/web'), queries: createRepositoryQueries(createGitAdapter({ limits: { historyPageSize: 2 } })) });
 });
@@ -30,7 +30,7 @@ async function open(page: Page) {
   const session = await call({ action: 'open', path: root }); const ticket = await call({ action: 'ticket', sessionId: session.sessionId });
   await page.goto(`${server.origin}/?session=${session.sessionId}#ticket=${ticket.ticket}`);
   await page.getByRole('navigation', { name: '主视图', exact: true }).getByRole('button', { name: '历史', exact: true }).click();
-  await expect(page.locator('.navigation-ref')).toHaveCount(2);
+  await expect(page.getByTestId('navigation-ref')).toHaveCount(2);
   await page.getByRole('navigation', { name: '历史内容', exact: true }).getByRole('button', { name: '提交搜索', exact: true }).click();
 }
 async function more(page: Page, name: string) {
@@ -43,7 +43,7 @@ async function fileHistory(page: Page) {
   if (await contextTab.isVisible()) await contextTab.click();
   else await more(page, '文件历史');
   await page.getByLabel('文件历史路径').fill('code.txt'); await page.getByRole('button', { name: '查看历史', exact: true }).click();
-  await expect(page.locator('.investigation-file .investigation-row')).toHaveCount(2); await expect(page.locator('.investigation-file .code-scroll')).toContainText('+fourth');
+  await expect(page.locator('.investigation-file .investigation-row')).toHaveCount(2); await expect(page.locator('.investigation-file [data-testid=diff-scroll]')).toContainText('+fourth');
 }
 test('three main entries integrate history tools with an explicit list scope and all-reference search', async ({ page }) => {
   const before = fingerprint(root); await open(page);
@@ -63,10 +63,10 @@ test('three main entries integrate history tools with an explicit list scope and
   await contents.getByRole('button', { name: '提交列表', exact: true }).click();
   await expect(sidebar).toBeVisible();
   await expect(sidebar.getByRole('button', { name: '当前 HEAD', exact: true })).toHaveAttribute('aria-pressed', 'true');
-  await sidebar.locator('.navigation-ref').filter({ hasText: /^topic/ }).click();
+  await sidebar.getByTestId('navigation-ref').filter({ hasText: /^topic/ }).click();
   await expect(contents.getByRole('button', { name: '提交列表', exact: true })).toHaveAttribute('aria-pressed', 'true');
   await expect(page.locator('.history-range-label')).toContainText('topic');
-  await expect(page.locator('.commit-row').first()).toContainText('topic-only history');
+  await expect(page.getByTestId('commit-row').first()).toContainText('topic-only history');
   await contents.getByRole('button', { name: '提交搜索', exact: true }).click();
   await expect(sidebar).toHaveCount(0);
   await expect(page.getByLabel('搜索历史范围')).toHaveValue('all');
@@ -127,7 +127,9 @@ test('file-history and line-origin commits open the main list while the prior fi
   await expect(sidebar).toHaveCount(0);
   await contents.getByRole('button', { name: '文件历史', exact: true }).click();
   await expect(page.getByLabel('文件历史路径')).toHaveValue('code.txt');
-  await expect(page.locator('.investigation-file .code-scroll')).toContainText('+fourth');
+  await expect(page.getByRole('button', { name: '比较后行来源', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.locator('.blame-line')).toHaveCount(4);
+  await expect(page.locator('.blame-scroll')).toContainText('fourth');
   expect(fingerprint(root)).toBe(before);
 });
 
@@ -162,9 +164,9 @@ test('shows rename paths and correct before/after line origins, with keyboard se
   expect(fingerprint(root)).toBe(before);
 });
 test('reads separate stash snapshots and reflog transitions, then compares a recorded move', async ({ page }) => {
-  const before = fingerprint(root); await open(page); await more(page, 'stash'); await expect(page.locator('.stash-snapshot .code-scroll')).toContainText('+working snapshot');
-  await page.getByRole('button', { name: '暂存区快照', exact: true }).click(); await expect(page.locator('.stash-snapshot .code-scroll')).toContainText('+index snapshot');
-  await page.getByRole('button', { name: '未跟踪快照', exact: true }).click(); await expect(page.locator('.stash-snapshot .code-scroll')).toContainText('+untracked snapshot'); await expect(page.locator('.stash-snapshot .file-row')).toContainText('untracked.txt');
+  const before = fingerprint(root); await open(page); await more(page, 'stash'); await expect(page.locator('.stash-snapshot [data-testid=diff-scroll]')).toContainText('+working snapshot');
+  await page.getByRole('button', { name: '暂存区快照', exact: true }).click(); await expect(page.locator('.stash-snapshot [data-testid=diff-scroll]')).toContainText('+index snapshot');
+  await page.getByRole('button', { name: '未跟踪快照', exact: true }).click(); await expect(page.locator('.stash-snapshot [data-testid=diff-scroll]')).toContainText('+untracked snapshot'); await expect(page.locator('.stash-snapshot .file-row')).toContainText('untracked.txt');
   await page.getByLabel('筛选 stash 文件').fill('absent'); await expect(page.locator('.stash-snapshot .diff-view')).toHaveCount(0); await page.getByRole('button', { name: '刷新仓库', exact: true }).click(); await expect(page.locator('.investigation-read')).toHaveAttribute('data-phase', 'idle'); await expect(page.locator('.stash-snapshot .diff-view')).toHaveCount(0);
   await more(page, 'reflog'); await expect(page.locator('.investigation-records .investigation-row')).toHaveCount(2); await expect(page.locator('.record-detail')).toContainText('HEAD@{0}');
   await page.locator('.investigation-records .investigation-row').filter({ hasText: 'commit: alpha fourth' }).click(); await expect(page.locator('.record-detail')).toContainText(latest.slice(0, 10)); await page.getByRole('button', { name: '查看新提交', exact: true }).click();
@@ -175,7 +177,7 @@ test('reads separate stash snapshots and reflog transitions, then compares a rec
   await page.getByRole('button', { name: '比较前后', exact: true }).click();
   await expect(page.getByRole('navigation', { name: '主视图', exact: true }).getByRole('button', { name: '版本比较', exact: true })).toHaveClass(/active/);
   await expect(page.getByRole('complementary', { name: '历史范围', exact: true })).toHaveCount(0);
-  await expect(page.locator('.comparison-workspace .code-scroll')).toContainText('+fourth'); expect(fingerprint(root)).toBe(before);
+  await expect(page.locator('.comparison-workspace [data-testid=diff-scroll]')).toContainText('+fourth'); expect(fingerprint(root)).toBe(before);
 });
 test('rejects obsolete search success/error and a blame result after changing its side', async ({ page }) => {
   await open(page);
@@ -183,7 +185,7 @@ test('rejects obsolete search success/error and a blame result after changing it
     let release!: () => void; let captured!: () => void; const hold = new Promise<void>(resolve => { release = resolve; }); const started = new Promise<void>(resolve => { captured = resolve; }); let once = true;
     const handler = async (route: Route) => { const request = route.request().postDataJSON(); if (request.action !== 'search' || !once) { await route.fallback(); return; } once = false; const response = await route.fetch(); const result = await response.json(); captured(); await hold; await route.fulfill({ json: failure ? { schemaVersion: 1, ok: false, error: { code: 'TIMEOUT', message: 'obsolete investigation failure', retryable: true }, stamp: result.stamp, requestId: request.requestId, finishedAt: new Date().toISOString() } : result }).catch(() => {}); };
     await page.route('**/api', handler); await page.getByLabel('搜索提交', { exact: true }).fill('alpha'); await page.getByRole('button', { name: '搜索', exact: true }).click(); await started;
-    await page.getByLabel('搜索提交', { exact: true }).fill('no match'); await page.getByRole('button', { name: '搜索', exact: true }).click(); await expect(page.getByText('无匹配提交', { exact: true })).toBeVisible(); release(); await page.waitForTimeout(100); await expect(page.locator('.investigation-view')).not.toContainText('obsolete investigation failure'); await expect(page.locator('.investigation-row')).toHaveCount(0); await page.unroute('**/api', handler);
+    await page.getByLabel('搜索提交', { exact: true }).fill('no match'); await page.getByRole('button', { name: '搜索', exact: true }).click(); await expect(page.getByText('无匹配提交', { exact: true })).toBeVisible(); release(); await page.waitForTimeout(100); await expect(page.getByTestId('investigation-view')).not.toContainText('obsolete investigation failure'); await expect(page.locator('.investigation-row')).toHaveCount(0); await page.unroute('**/api', handler);
   }
   await fileHistory(page); let release!: () => void; let captured!: () => void; const hold = new Promise<void>(resolve => { release = resolve; }); const started = new Promise<void>(resolve => { captured = resolve; }); let once = true;
   await page.route('**/api', async route => { if (route.request().postDataJSON().action !== 'blame' || !once) { await route.fallback(); return; } once = false; const response = await route.fetch(); captured(); await hold; await route.fulfill({ response }).catch(() => {}); });
@@ -193,13 +195,13 @@ test('cancels and retries, switches language and keeps narrow file/blame and sta
   await open(page); let release!: () => void; const hold = new Promise<void>(resolve => { release = resolve; }); let once = true;
   await page.route('**/api', async route => { if (route.request().postDataJSON().action !== 'search' || !once) { await route.fallback(); return; } once = false; const response = await route.fetch(); await hold; await route.fulfill({ response }).catch(() => {}); });
   await page.getByLabel('搜索提交', { exact: true }).fill('alpha'); await page.getByRole('button', { name: '搜索', exact: true }).click(); await page.getByRole('button', { name: '取消提交搜索读取', exact: true }).click(); release(); await page.getByRole('button', { name: '重新读取提交搜索', exact: true }).click(); await expect(page.locator('.investigation-row')).toHaveCount(2);
-  await page.getByLabel('界面语言').selectOption('en'); await expect(page.getByLabel('Search scope')).toBeVisible(); expect(await page.getByLabel('Search scope').textContent()).not.toMatch(/[\u4e00-\u9fff]/); await page.getByLabel('Interface language').selectOption('zh-CN');
-  await fileHistory(page); await page.getByRole('button', { name: '比较后行来源', exact: true }).click(); await expect(page.locator('.blame-line')).toHaveCount(4); await page.getByLabel('界面语言').selectOption('en'); await expect(page.getByRole('button', { name: 'View history', exact: true })).toBeVisible(); expect(await page.locator('.investigation-view').innerText()).not.toMatch(/[\u4e00-\u9fff]/);
+  await page.getByLabel('界面语言').selectOption('en'); await expect(page.getByLabel('Search scope')).toBeVisible(); await expect(page.getByLabel('Search scope').getByRole('option', { name: 'All refs', exact: true })).toHaveText('All refs'); await expect(page.getByLabel('Search field').getByRole('option')).toHaveText(['Subject', 'Author', 'commit ID', 'File path']); await page.getByLabel('Interface language').selectOption('zh-CN');
+  await fileHistory(page); await page.getByRole('button', { name: '比较后行来源', exact: true }).click(); await expect(page.locator('.blame-line')).toHaveCount(4); await page.getByLabel('界面语言').selectOption('en'); await expect(page.getByRole('button', { name: 'View history', exact: true })).toBeVisible(); await expect(page.getByRole('button', { name: 'Blame before', exact: true })).toBeVisible(); await expect(page.getByRole('button', { name: 'Blame after', exact: true })).toBeVisible(); await expect(page.locator('.blame-scroll')).toContainText('用户代码保持原文');
   await page.setViewportSize({ width: 390, height: 844 }); await page.getByRole('button', { name: 'View details', exact: true }).click(); await expect(page.locator('.blame-scroll')).toBeVisible(); expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   await more(page, 'stash');
   // Entering a history tool starts with its records in a narrow window;
   // snapshot controls belong to the explicitly opened detail panel.
   await page.getByRole('navigation', { name: 'Panels for narrow windows', exact: true }).getByRole('button', { name: 'View details', exact: true }).click();
-  await expect(page.locator('.stash-snapshot .code-scroll')).toBeVisible();
-  await expect(page.locator('.stash-snapshot .code-scroll')).toContainText('+working snapshot'); await page.getByRole('button', { name: 'Index snapshot', exact: true }).click(); await expect(page.locator('.stash-snapshot .code-scroll')).toContainText('+index snapshot'); await page.getByRole('button', { name: 'Untracked snapshot', exact: true }).click(); await expect(page.locator('.stash-snapshot .diff-baseline')).toContainText('Empty tree'); expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true); expect(await page.locator('.investigation-view').innerText()).not.toMatch(/[\u4e00-\u9fff]/);
+  await expect(page.locator('.stash-snapshot [data-testid=diff-scroll]')).toBeVisible();
+  await expect(page.locator('.stash-snapshot [data-testid=diff-scroll]')).toContainText('+working snapshot'); await page.getByRole('button', { name: 'Index snapshot', exact: true }).click(); await expect(page.locator('.stash-snapshot [data-testid=diff-scroll]')).toContainText('+index snapshot'); await page.getByRole('button', { name: 'Untracked snapshot', exact: true }).click(); await expect(page.locator('.stash-snapshot .diff-baseline')).toContainText('Empty tree'); expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true); await expect(page.getByRole('navigation', { name: 'Stash snapshots', exact: true }).getByRole('button')).toHaveText(['Working tree snapshot', 'Index snapshot', 'Untracked snapshot']); await page.getByRole('button', { name: 'Working tree snapshot', exact: true }).click(); await expect(page.getByTestId('diff-scroll')).toContainText('用户暂存内容保持原文');
 });

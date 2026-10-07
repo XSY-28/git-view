@@ -1,8 +1,8 @@
 import { LanguageSelector, useI18n } from './i18n';
-import { useEffect, useRef, useState, type Dispatch, type SetStateAction } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { z } from 'zod';
-import { commitDetailSchema, diffSchema, folderChoiceSchema, historySchema, overviewSchema, navigationSchema, queryKey, recentSchema, sessionSchema, type ApiRequest, type ChangeEntry, type CommitDetail, type CommitNode, type Diff, type History, type HistoryOrder, type Overview, type Navigation, type ReadStamp, type RecentRepository, type RepositorySession } from '@git-view/contracts';
-import { api, ApiError, bootstrap, errorMessage, subscribeRepositoryInvalidation } from './state/api';
+import { commitDetailSchema, diffSchema, folderChoiceSchema, historySchema, overviewSchema, rawOverviewSchema, navigationSchema, queryKey, recentSchema, sessionSchema, type ApiRequest, type ChangeEntry, type CommitDetail, type CommitNode, type Diff, type History, type HistoryOrder, type Overview, type Navigation, type ReadStamp, type RecentRepository, type RepositorySession } from '@git-view/contracts';
+import { api, ApiError, bootstrap, errorMessage, readRepositoryWatch, subscribeRepositoryInvalidation } from './state/api';
 import { connectDesktopOpen } from './state/transport';
 import { RequestGate } from './state/request-gate';
 import { ReadCancellation, type ReadSlot } from './state/read-coordination';
@@ -23,9 +23,9 @@ import { historyScopeLabel } from './features/navigation/history-scope';
 import { CommitSummary } from './features/history/CommitSummary';
 import { useHistoryPaneLayout } from './features/history/useHistoryPaneLayout';
 import { RepositoryController, RefreshQueue, type HistoryScope, type MainView, type FileListScope } from './state/repository-controller';
+import type { ReadingOrigin } from './features/investigation/reading-memory';
+import type { Resource, ResourceSetter } from './state/resource';
 
-type Resource<T> = ReadState & { value?: T; stamp?: ReadStamp };
-type ResourceSetter<T> = Dispatch<SetStateAction<Resource<T>>>;
 type SessionFields = { action: 'overview' } | { action: 'navigation' } | { action: 'change'; entryId: string; fingerprint: string } | { action: 'history'; scope: HistoryScope; ref?: string; order?: HistoryOrder; cursor?: string } | { action: 'commit'; oid: string } | { action: 'commit-change'; oid: string; entryId: string };
 const invalidReadMessage = '读取结果与当前请求身份不匹配，结果未被采用。';
 const empty = <T,>(): Resource<T> => ({ loading: false });
@@ -41,6 +41,11 @@ export function App({ initialSessionId, ticket }: { initialSessionId?: string; t
   const refreshQueue = useRef(new RefreshQueue());
   const fileScroll = useRef<HTMLDivElement>(null);
   const gate = useRef(new RequestGate());
+  const focusGate = useRef(new RequestGate());
+  const mainReads = useRef(new Map<string, string>());
+  const refreshRequired = useRef(false);
+  const watchState = useRef<{ revision: number; watching: boolean } | undefined>(undefined);
+  const currentNavigation = useRef<Navigation | undefined>(undefined);
   const cancellation = useRef(new ReadCancellation());
   const comparisonCancelled = useRef(false);
   // Choosing a repository is independent of the current repository's refresh generation.
@@ -63,6 +68,7 @@ export function App({ initialSessionId, ticket }: { initialSessionId?: string; t
   const [navigation, setNavigation] = useState<Resource<Navigation>>(empty);
   const [recents, setRecents] = useState<RecentRepository[]>([]);
   const [view, setView] = useState<MainView>('changes');
+  const [readingOrigin, setReadingOrigin] = useState<ReadingOrigin>();
   const [historyView, setHistoryView] = useState<'history' | 'investigation'>('history');
   const [investigationOptions, setInvestigationOptions] = useState<InvestigationMemory>(defaultInvestigation);
   const showingCommitHistory = view === 'history';
@@ -86,7 +92,7 @@ export function App({ initialSessionId, ticket }: { initialSessionId?: string; t
     overview: overview.value,
     available: Boolean(session && overview.value && !overview.loading && !overview.stale && !overview.error && !overview.cancelled && overview.value.complete && !overview.value.changes.conflicts.length && !overview.value.operation.length && !repositoryActivity),
     beforeExecute: () => {
-      refreshQueue.current.reset(); pendingRefresh.current = false; gate.current.cancelAll();
+      refreshQueue.current.reset(); refreshRequired.current = false; pendingRefresh.current = false; focusGate.current.cancelAll(); gate.current.cancelAll();
       const stop = <T,>(setter: ResourceSetter<T>) => setter(previous => ({ ...previous, loading: false, stale: Boolean(previous.value) }));
       stop(setOverview); stop(setNavigation); stop(setHistory); stop(setCommit); stop(setDiff); stop(setCommitDiff);
     },
@@ -112,7 +118,7 @@ export function App({ initialSessionId, ticket }: { initialSessionId?: string; t
   }
   function cancel(slot: ReadSlot) {
     if (operations.executing.current) return;
-    refreshQueue.current.reset(); pendingRefresh.current = false;
+    refreshQueue.current.reset(); refreshRequired.current = false; pendingRefresh.current = false; focusGate.current.cancelAll();
     const stop = <T,>(setter: ResourceSetter<T>) => () => setter(previous => ({ ...previous, loading: false, error: undefined, cancelled: true, stale: Boolean(previous.value) }));
     const stops = { overview: stop(setOverview), navigation: stop(setNavigation), history: stop(setHistory), commit: stop(setCommit), diff: stop(setDiff), 'commit-diff': stop(setCommitDiff) };
     for (const target of cancellation.current.cancel(slot)) {
@@ -132,6 +138,7 @@ export function App({ initialSessionId, ticket }: { initialSessionId?: string; t
     const active = currentSession.current; if (!active || operations.executing.current || cancellation.current.isCancelled(slot)) return;
     const request = { ...fields, schemaVersion: 1, sessionId: active.sessionId, generation: active.generation, requestId: 'pending' } as ApiRequest;
     const identity = gate.current.begin(slot, queryKey(request, active.repository.worktreeId)); request.requestId = identity.requestId;
+    if (slot === 'overview' || slot === 'navigation') mainReads.current.set(slot, identity.requestId);
     let recovering = false;
     setter(previous => ({ ...(keep ? previous : {}), loading: true, error: undefined, cancelled: false, stale: keep && Boolean(previous.value), activity: { id: identity.requestId, startedAt: Date.now() } }));
     try {
@@ -145,6 +152,8 @@ export function App({ initialSessionId, ticket }: { initialSessionId?: string; t
       // An active request with an invalid response must settle as a local protocol
       // failure. An obsolete request must not write success, error, or finally state.
       if (gate.current.accepts(identity)) {
+        if (slot === 'overview') currentOverview.current = undefined;
+        if (slot === 'navigation') currentNavigation.current = undefined;
         const mismatch = error instanceof ApiError && error.stamp && !gate.current.accepts(identity, error.stamp);
         if (!mismatch && error instanceof ApiError && error.detail.code === 'STALE_RESULT' && slot === 'diff' && staleRecoveries.current < 1) {
           recovering = true; staleRecoveries.current += 1;
@@ -154,6 +163,7 @@ export function App({ initialSessionId, ticket }: { initialSessionId?: string; t
         }
       }
     } finally {
+      if (mainReads.current.get(slot) === identity.requestId) mainReads.current.delete(slot);
       if (!recovering && gate.current.accepts(identity)) setter(previous => ({ ...previous, loading: false }));
     }
   }
@@ -192,6 +202,7 @@ export function App({ initialSessionId, ticket }: { initialSessionId?: string; t
   }
   function selectCommit(node: Pick<CommitNode, 'oid'>, activate = true) {
     if (operations.executing.current) return;
+    setReadingOrigin(undefined);
     commitSelection.current = node.oid; setSelectedCommit(node.oid); if (activate) { setHistoryDetailsOpen(true); setMobilePanel('diff'); }
     gate.current.cancel('commit-diff'); setCommitDiff(empty()); setSelectedCommitFile(undefined); commitFileSelection.current = undefined;
     cancellation.current.resume('commit');
@@ -201,17 +212,25 @@ export function App({ initialSessionId, ticket }: { initialSessionId?: string; t
   function showHistoryTab(tab: InvestigationTab | 'commits') {
     if (operations.executing.current) return;
     if (tab === 'commits') { setHistoryView('history'); setView('history'); }
-    else { rememberInvestigation({ ...controller.current.investigation(), tab }); setHistoryView('investigation'); setView('investigation'); }
+    else { setReadingOrigin(undefined); rememberInvestigation({ ...controller.current.investigation(), tab }); setHistoryView('investigation'); setView('investigation'); }
     setMobilePanel('list');
     if (tab === 'commits' && !history.value && !history.loading) retry('history');
   }
-  function openHistoryCommit(node: Pick<CommitNode, 'oid'>) {
-    showHistoryTab('commits'); selectCommit(node);
+  function openHistoryCommit(node: Pick<CommitNode, 'oid'>, origin?: ReadingOrigin) {
+    showHistoryTab('commits'); selectCommit(node); setReadingOrigin(origin);
+  }
+  function returnToReading() {
+    if (!readingOrigin || operations.executing.current) return;
+    const memory = controller.current.investigationReading()[readingOrigin.tab];
+    if (memory) memory.position.restoreFocus = readingOrigin.focus;
+    showHistoryTab(readingOrigin.tab); setMobilePanel(readingOrigin.tab === 'file' ? 'diff' : 'list'); setReadingOrigin(undefined);
   }
   function investigateFile(diff: Diff) {
     const head = currentOverview.current?.head;
     const file = fileHistoryLocation(diff, head && head.kind !== 'unborn' ? head.oid : undefined);
     if (!file) return;
+    if (JSON.stringify(controller.current.investigation().file) !== JSON.stringify(file)) controller.current.investigationReading().file = undefined;
+    setReadingOrigin(undefined);
     rememberInvestigation({ ...controller.current.investigation(), tab: 'file', file }); setHistoryView('investigation'); setView('investigation'); setMobilePanel('list');
   }
   function closeHistoryDetails() {
@@ -294,14 +313,14 @@ export function App({ initialSessionId, ticket }: { initialSessionId?: string; t
       if (loadGraph && historyVersion === historyReadVersion.current) loadHistory();
     }, true);
   }
-  function loadNavigation() { void query('navigation', { action: 'navigation' }, navigationSchema, setNavigation, undefined, true); }
+  function loadNavigation() { void query('navigation', { action: 'navigation' }, navigationSchema, setNavigation, data => { currentNavigation.current = data; }, true); }
   function filterHistory(scope: HistoryScope, ref?: string) { if (operations.executing.current) return; cancellation.current.resume('history'); showHistoryTab('commits'); loadHistory(scope, undefined, false, ref); }
   function sortHistory(order: HistoryOrder) { if (operations.executing.current) return; cancellation.current.resume('history'); void loadHistory('all', undefined, false, undefined, order); }
   function adoptSession(next: RepositorySession) {
     operations.activate(next);
-    setHistoryDetailsOpen(false);
-    refreshQueue.current.reset(); cancellation.current.reset(); pendingRefresh.current = false; setLocateRequest(undefined); currentSession.current = next; setSession(next); currentOverview.current = undefined; currentHistory.current = undefined;
-    gate.current.setContext(next.sessionId, next.generation);
+    setHistoryDetailsOpen(false); setReadingOrigin(undefined);
+    refreshQueue.current.reset(); cancellation.current.reset(); pendingRefresh.current = false; setLocateRequest(undefined); currentSession.current = next; setSession(next); currentOverview.current = undefined; currentNavigation.current = undefined; watchState.current = undefined; refreshRequired.current = false; mainReads.current.clear(); currentHistory.current = undefined;
+    gate.current.setContext(next.sessionId, next.generation); focusGate.current.setContext(next.sessionId, next.generation);
     const memory = controller.current.activate(next.repository.worktreeId);
     setHistoryView(memory.historyView ?? (memory.view === 'investigation' ? 'investigation' : 'history'));
     setInvestigationOptions(memory.investigation ?? defaultInvestigation());
@@ -360,16 +379,48 @@ export function App({ initialSessionId, ticket }: { initialSessionId?: string; t
     if (source === 'focus' && (cancellation.current.hasCancelled() || comparisonCancelled.current)) return;
     if (repositoryBusy.current) { pendingRefresh.current = true; return; }
     if (!currentSession.current) return;
-    operations.invalidate('仓库状态已更新，请重新选择并预览。');
-    refreshQueue.current.request(performRefresh);
+    if (source !== 'focus') refreshRequired.current = true;
+    refreshQueue.current.request(() => { if (refreshRequired.current) performRefresh(); else void checkFocusRefresh(); });
+  }
+  async function checkFocusRefresh() {
+    const active = currentSession.current;
+    if (!active || operations.executing.current || repositoryBusy.current || cancellation.current.hasCancelled() || comparisonCancelled.current) return;
+    // An in-flight overview/navigation already observes the repository; a probe
+    // with the same query key would otherwise cancel it in the local process.
+    if (mainReads.current.size) return;
+    const beforeOverview = currentOverview.current; const beforeNavigation = currentNavigation.current; const beforeWatch = watchState.current;
+    if (!beforeOverview || !beforeNavigation || !beforeWatch?.watching) { performRefresh(); return; }
+    const context = active; const probe = focusGate.current.begin('probe', 'focus');
+    async function observe<T>(action: 'overview' | 'navigation', schema: z.ZodType<T>) {
+      const request = { schemaVersion: 1 as const, action, sessionId: context.sessionId, generation: context.generation, requestId: 'pending' };
+      const identity = focusGate.current.begin(action, queryKey(request, context.repository.worktreeId)); request.requestId = identity.requestId;
+      const response = await api(request, schema, identity.controller.signal);
+      if (!response.stamp || !focusGate.current.accepts(identity, response.stamp)) throw new Error(invalidReadMessage);
+      return response.data;
+    }
+    try {
+      const [nextOverview, nextNavigation, nextWatch] = await Promise.all([
+        observe('overview', overviewSchema), observe('navigation', navigationSchema), readRepositoryWatch(active.sessionId, probe.controller.signal),
+      ]);
+      if (!focusGate.current.accepts(probe) || mainReads.current.size || repositoryBusy.current || operations.executing.current) return;
+      const unchanged = nextWatch.watching && nextWatch.revision === beforeWatch.revision &&
+        JSON.stringify(rawOverviewSchema.parse(beforeOverview)) === JSON.stringify(rawOverviewSchema.parse(nextOverview)) &&
+        JSON.stringify(beforeNavigation) === JSON.stringify(nextNavigation);
+      if (!unchanged || refreshRequired.current) performRefresh();
+    } catch {
+      // Failed or mismatched checks cannot establish freshness. The normal read
+      // path exposes a persistent failure while retaining old content as stale.
+      if (focusGate.current.accepts(probe) && !mainReads.current.size) performRefresh();
+    } finally { if (focusGate.current.accepts(probe)) focusGate.current.cancelAll(); }
   }
   function performRefresh() {
     if (operations.executing.current) return;
+    refreshRequired.current = false; focusGate.current.cancelAll(); mainReads.current.clear();
     operations.invalidate('仓库状态已更新，请重新选择并预览。');
     if (repositoryBusy.current) { pendingRefresh.current = true; return; }
     const active = currentSession.current; if (!active) return;
     const next = { ...active, generation: active.generation + 1 }; currentSession.current = next; setSession(next);
-    gate.current.setContext(next.sessionId, next.generation);
+    gate.current.setContext(next.sessionId, next.generation); focusGate.current.setContext(next.sessionId, next.generation);
     cancellation.current.reset();
     setInfo(undefined); setDiff(previous => ({ ...previous, stale: Boolean(previous.value), loading: false, cancelled: false, error: undefined }));
     setHistory(previous => ({ ...previous, stale: Boolean(previous.value), loading: false, cancelled: false, error: undefined }));
@@ -394,7 +445,11 @@ export function App({ initialSessionId, ticket }: { initialSessionId?: string; t
   useEffect(() => {
     setWatchError('');
     if (!session) return;
-    return subscribeRepositoryInvalidation(session.sessionId, () => { if (currentSession.current?.sessionId === session.sessionId) refresh('change'); }, error => { if (currentSession.current?.sessionId === session.sessionId) setWatchError(`${errorMessage(error)} 自动更新已停止，可手动刷新或重新打开仓库。`); });
+    return subscribeRepositoryInvalidation(session.sessionId, () => { if (currentSession.current?.sessionId === session.sessionId) refresh('change'); }, error => { if (currentSession.current?.sessionId === session.sessionId) { watchState.current = undefined; setWatchError(`${errorMessage(error)} 自动更新已停止，可手动刷新或重新打开仓库。`); } }, state => {
+      if (currentSession.current?.sessionId !== session.sessionId) return;
+      if (watchState.current && watchState.current.revision !== state.revision) refreshRequired.current = true;
+      watchState.current = state;
+    });
   }, [session?.sessionId, watchEpoch]);
   useEffect(() => {
     if (session) controller.current.save({ view, historyView, scope: historyScope.current, ref: historyRef.current, allHistoryOrder: allHistoryOrder.current, selection: selection.current, commit: commitSelection.current, commitFile: commitFileSelection.current });
@@ -416,14 +471,14 @@ export function App({ initialSessionId, ticket }: { initialSessionId?: string; t
   }, []);
   useEffect(() => {
     function focus() { if (document.visibilityState === 'visible') refresh('focus'); }
-    function pageHide() { cancelRepositoryOpen(false); refreshQueue.current.reset(); gate.current.cancelAll(); }
+    function pageHide() { cancelRepositoryOpen(false); refreshQueue.current.reset(); refreshRequired.current = false; focusGate.current.cancelAll(); gate.current.cancelAll(); }
     window.addEventListener('focus', focus); document.addEventListener('visibilitychange', focus);
     window.addEventListener('pagehide', pageHide);
     const heartbeat = window.setInterval(() => { void api({ schemaVersion: 1, action: 'heartbeat', requestId: crypto.randomUUID() }, z.object({ alive: z.boolean() })).catch(() => undefined); }, 60_000);
     return () => {
       window.removeEventListener('focus', focus); document.removeEventListener('visibilitychange', focus);
       window.removeEventListener('pagehide', pageHide); window.clearInterval(heartbeat);
-      repositoryGate.current.cancelAll(); repositoryBusy.current = false; refreshQueue.current.reset(); gate.current.cancelAll();
+      repositoryGate.current.cancelAll(); repositoryBusy.current = false; refreshQueue.current.reset(); refreshRequired.current = false; focusGate.current.cancelAll(); gate.current.cancelAll();
     };
   }, []);
 
@@ -493,6 +548,7 @@ export function App({ initialSessionId, ticket }: { initialSessionId?: string; t
           <button className={view === 'history' || view === 'investigation' ? 'active' : ''} aria-pressed={view === 'history' || view === 'investigation'} onClick={() => showHistoryTab(historyView === 'history' ? 'commits' : investigationOptions.tab)}>{t('历史')}</button>
           <button className={view === 'comparison' ? 'active' : ''} aria-pressed={view === 'comparison'} onClick={() => { setView('comparison'); setMobilePanel('list'); }}>{t('版本比较')}</button>
         </nav><div className="view-actions">
+          {showingCommitHistory && readingOrigin && <button disabled={operationBusy} onClick={returnToReading}><span aria-hidden="true">← </span>{t(readingOrigin.tab === 'search' ? '返回搜索结果' : '返回文件历史')}</button>}
           {view === 'changes' && <RepositoryActions mode="commit" operations={operations} overview={data}/>}
           {showingCommitHistory && <button className="locate-button" disabled={!headOid || history.loading} title={headInHistory ? t('选中并定位当前 HEAD') : t('查看从当前 HEAD 出发的历史')} onClick={locateHead}>{headInHistory ? t('定位 HEAD') : t('查看 HEAD 历史')}</button>}
           {showingCommitHistory && selectedCommit && !historyDetailsOpen && <button className="history-open-details" onClick={() => { setHistoryDetailsOpen(true); setMobilePanel('diff'); }}>{t("查看提交详情")}</button>}
@@ -504,7 +560,7 @@ export function App({ initialSessionId, ticket }: { initialSessionId?: string; t
           <button className={mobilePanel === 'diff' ? 'active' : ''} disabled={showingCommitHistory && !selectedCommit} onClick={() => { setMobilePanel('diff'); if (showingCommitHistory) setHistoryDetailsOpen(true); }}>{t("查看详情")}</button>
         </nav>}
 
-        {view === 'comparison' ? <ComparisonView key={session.sessionId} session={session} navigation={navigation.value} initialOptions={controller.current.comparison()} initialCommit={selectedCommit} blocked={operationBusy} mobilePanel={mobilePanel} onShowDiff={() => setMobilePanel('diff')} onSelectCommit={openHistoryCommit} onFileHistory={investigateFile} onOptionsChange={options => controller.current.comparison(options)} onCancellation={cancelled => { comparisonCancelled.current = cancelled; }}/> : view === 'investigation' ? <InvestigationView key={session.sessionId} session={session} navigation={navigation.value} options={investigationOptions} blocked={operationBusy} mobilePanel={mobilePanel} onChange={rememberInvestigation} onShowDetail={() => setMobilePanel('diff')} onOpenCommit={oid => openHistoryCommit({ oid })} onCompare={options => { controller.current.comparison(options); setView('comparison'); setMobilePanel('list'); }} onCancellation={cancelled => { comparisonCancelled.current = cancelled; }}/> : <main ref={historyPane.workspaceRef} style={view === 'history' ? historyPane.workspaceStyle : undefined} data-details={historyDetailsOpen ? 'open' : 'closed'} className={`workspace ${view === 'history' ? 'history-workspace' : ''} mobile-${mobilePanel}`}>
+        {view === 'comparison' ? <ComparisonView key={session.sessionId} session={session} navigation={navigation.value} initialOptions={controller.current.comparison()} initialCommit={selectedCommit} blocked={operationBusy} mobilePanel={mobilePanel} onShowDiff={() => setMobilePanel('diff')} onSelectCommit={openHistoryCommit} onFileHistory={investigateFile} onOptionsChange={options => controller.current.comparison(options)} onCancellation={cancelled => { comparisonCancelled.current = cancelled; }}/> : view === 'investigation' ? <InvestigationView key={session.sessionId} session={session} navigation={navigation.value} options={investigationOptions} memory={controller.current.investigationReading()} blocked={operationBusy} mobilePanel={mobilePanel} onChange={rememberInvestigation} onShowDetail={() => setMobilePanel('diff')} onOpenCommit={(oid, origin) => openHistoryCommit({ oid }, origin)} onCompare={options => { controller.current.comparison(options); setView('comparison'); setMobilePanel('list'); }} onCancellation={cancelled => { comparisonCancelled.current = cancelled; }}/> : <main ref={historyPane.workspaceRef} style={view === 'history' ? historyPane.workspaceStyle : undefined} data-details={historyDetailsOpen ? 'open' : 'closed'} className={`workspace ${view === 'history' ? 'history-workspace' : ''} mobile-${mobilePanel}`}>
           <aside className="list-panel">
             {view === 'changes' ? <><div className="panel-heading"><h2>{t("文件变化")}</h2><span>{total} {t(" 项比较")}</span></div>{data ? <ChangeList scope="changes" operations={operations} actions={<OperationSelection operations={operations}/>} disabled={operationBusy} changes={data.changes} filter={fileFilters.changes} onFilter={value => filterFiles('changes', value)} selected={selected} onSelect={(entry, activate) => selectChange(entry, currentOverview.current, activate)} scrollRef={fileScroll} onScroll={top => controller.current.scroll('changes', top)}/> : <p className="panel-wait">{overview.loading ? t('正在读取工作区…') : t('读取概览后显示文件。')}</p>}</> : <><div className="panel-heading"><h2>{t("提交关系")}</h2><div className="history-heading-controls"><span className="history-range-label"><span>{historyScope.current === 'ref' ? historyScopeLabel(historyScope.current, historyRef.current) : t(historyScopeLabel(historyScope.current))}</span></span>{historyScope.current === 'all' && <select aria-label={t("历史排序")} className="history-order" value={allHistoryOrder.current} title={t("时间优先：优先展示较新的提交，保留父子关系。分支聚合：尽量连续展示同一条历史线。")} onChange={event => { const order = event.target.value; if (order === 'date' || order === 'topo') sortHistory(order); }}><option value="date">{t("时间优先")}</option><option value="topo">{t("分支聚合")}</option></select>}</div></div><ReadFeedback state={history} hasValue={Boolean(history.value)} scope={t("提交历史")} className="history-read-state" onRetry={() => retry('history')} onCancel={() => cancel('history')}/>{history.value?.shallow && <div className="history-boundary-note">{t("浅克隆 · 历史不完整")}</div>}{history.value?.commits.length ? <HistoryGraph fullWidth={!historyDetailsOpen} commits={history.value.commits} selected={selectedCommit} headOid={history.value.headOid} onSelect={selectCommit} key={`${session.repository.worktreeId}:${historyScope.current}:${historyRef.current || ''}:${historyOrder.current}`} locateRequest={locateRequest} onLocateConsumed={version => setLocateRequest(current => current?.version === version ? undefined : current)} initialTop={controller.current.position(`history:${historyScope.current}:${historyRef.current || ''}:${historyOrder.current}`)} onScroll={top => controller.current.scroll(`history:${historyScope.current}:${historyRef.current || ''}:${historyOrder.current}`, top)}/> : history.value && !history.loading && !history.error && !history.stale && <Empty title={data?.head.kind === 'unborn' ? t('仓库尚无提交') : t('当前范围内无提交')}/>}{history.value && <div className="history-pagination"><span className="history-loaded-count">{t('已加载 {0} 条提交', [history.value.commits.length])}</span>{history.value.nextCursor && <button className="load-more" disabled={history.loading} onClick={() => { cancellation.current.resume('history'); void loadHistory(historyScope.current, history.value?.nextCursor); }}>{t("继续加载 200 条 ")}<span>↓</span></button>}</div>}</>}
           </aside>

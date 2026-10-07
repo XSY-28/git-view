@@ -56,7 +56,7 @@ test('explicit stage selection changes V2 to V3 only for selected file; preview 
   let dialog = await selectPreview(page);
   await expect(page.getByRole('checkbox', { name: '选择取消暂存 untouched.txt', exact: true, includeHidden: true })).toBeDisabled();
   await expect(dialog.locator('.operation-preview-files button')).toHaveText(['versions.txt']);
-  await expect(dialog.locator('.code-scroll')).toContainText('V3 working');
+  await expect(dialog.getByTestId('diff-scroll')).toContainText('V3 working');
   await dialog.getByRole('button', { name: '取消', exact: true }).click();
   await expect(dialog).not.toBeVisible(); expect(git('show', ':versions.txt')).toBe('V2 staged\n');
   await page.getByRole('button', { name: '预览暂存', exact: true }).click();
@@ -133,7 +133,7 @@ test('narrow keyboard selection and preview are accessible; commit history has n
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   await page.screenshot({ path: 'test-results/operation-preview-narrow.png', fullPage: true });
   await page.keyboard.press('Escape'); await expect(dialog).not.toBeVisible(); await expect(action).toBeFocused();
-  await page.getByRole('navigation', { name: '主视图', exact: true }).getByRole('button', { name: '历史', exact: true }).click(); await page.locator('.commit-row').first().click();
+  await page.getByRole('navigation', { name: '主视图', exact: true }).getByRole('button', { name: '历史', exact: true }).click(); await page.getByTestId('commit-row').first().click();
   await expect(page.locator('.change-list-history')).toBeVisible();
   await expect(page.locator('.change-list-history input[type=checkbox]')).toHaveCount(0);
 });

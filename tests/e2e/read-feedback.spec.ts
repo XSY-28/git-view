@@ -22,11 +22,11 @@ const refresh = (page: Page) => page.getByRole('button', { name: '刷新仓库',
 async function open(page: Page, history = false) {
   const ticket = await call({ action: 'ticket', sessionId });
   await page.goto(`${origin}/?session=${sessionId}#ticket=${ticket.ticket}`);
-  await expect(page.locator('.code-scroll')).toContainText('+working-a.txt');
+  await expect(page.getByTestId('diff-scroll')).toContainText('+working-a.txt');
   if (history) {
     await page.getByRole('navigation', { name: '主视图', exact: true }).getByRole('button', { name: '历史', exact: true }).click();
-    await page.locator('.commit-row').filter({ hasText: 'feedback changes' }).click();
-    await expect(page.locator('.code-scroll')).toContainText('+committed-a.txt');
+    await page.getByTestId('commit-row').filter({ hasText: 'feedback changes' }).click();
+    await expect(page.getByTestId('diff-scroll')).toContainText('+committed-a.txt');
   }
   await expect(feedback(page, '仓库状态')).toHaveAttribute('data-phase', 'idle');
   await expect(feedback(page, '文件差异')).toHaveAttribute('data-phase', 'idle');
@@ -86,14 +86,14 @@ async function ignoreTransportAbort(page: Page) {
 }
 async function readingState(page: Page) {
   return page.evaluate(() => {
-    const code = document.querySelector<HTMLElement>('.code-scroll');
+    const code = document.querySelector<HTMLElement>('[data-testid=diff-scroll]');
     const bounds = code?.getBoundingClientRect();
     return { pageY: scrollY, top: code?.scrollTop, left: code?.scrollLeft, bounds: bounds && { x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height }, retained: code?.dataset.feedbackProbe === 'original', metadata: document.querySelector<HTMLDetailsElement>('.commit-metadata')?.open, files: document.querySelector<HTMLDetailsElement>('.commit-files')?.open };
   });
 }
 async function prepareScroll(page: Page) {
   await page.getByRole('button', { name: '并排', exact: true }).click(); await page.getByLabel('自动折行').uncheck();
-  await page.locator('.code-scroll').evaluate(node => { const el = node as HTMLElement; el.dataset.feedbackProbe = 'original'; el.scrollTop = 620; el.scrollLeft = 180; });
+  await page.getByTestId('diff-scroll').evaluate(node => { const el = node as HTMLElement; el.dataset.feedbackProbe = 'original'; el.scrollTop = 620; el.scrollLeft = 180; });
   await page.evaluate(() => scrollTo(0, Math.max(0, document.documentElement.scrollHeight - innerHeight - 30)));
   await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
 }
@@ -165,8 +165,8 @@ test('slow feedback preserves live reading, neutral cancellation clears queued f
     await page.waitForTimeout(950);
     expect(actions.filter(action => action === 'overview')).toHaveLength(count);
     await expect(feedback(page, '文件差异')).toHaveAttribute('data-phase', 'cancelled');
-    await expect(page.locator('.code-scroll')).toContainText('+working-a.txt');
-    await expect(page.locator('.code-scroll')).not.toContainText('LATE VALUE');
+    await expect(page.getByTestId('diff-scroll')).toContainText('+working-a.txt');
+    await expect(page.getByTestId('diff-scroll')).not.toContainText('LATE VALUE');
     await page.screenshot({ path: 'test-results/round3-cancelled-read.png', fullPage: true });
     await refresh(page);
     await expect(feedback(page, '文件差异')).toHaveAttribute('data-phase', 'idle');
@@ -187,7 +187,7 @@ for (const interrupted of ['error', 'cancelled'] as const) {
         await failed.finish();
       }
       await expect(feedback(page, '仓库状态')).toHaveAttribute('data-phase', interrupted);
-      await expect(page.locator('.code-scroll')).toContainText('+working-a.txt');
+      await expect(page.getByTestId('diff-scroll')).toContainText('+working-a.txt');
       expect(await readingState(page)).toEqual(before);
       const retry = await holdNext(page, 'overview');
       try {
@@ -208,7 +208,7 @@ for (const interrupted of ['error', 'cancelled'] as const) {
   test(`commit ${interrupted} and dependent diff retry preserve selected file, disclosures and exact scroll`, async ({ page }) => {
   await page.setViewportSize({ width: 1180, height: 760 }); await open(page, true);
   await page.locator('.commit-files .file-row').filter({ hasText: 'b.txt' }).click();
-  await expect(page.locator('.code-scroll')).toContainText('+committed-b.txt');
+  await expect(page.getByTestId('diff-scroll')).toContainText('+committed-b.txt');
   await page.locator('.commit-metadata summary').click(); await page.locator('.commit-files summary').click();
   await prepareScroll(page); const before = await readingState(page);
   expect(before.top).toBe(620); expect(before.left).toBe(180); expect(before.metadata).toBe(true); expect(before.files).toBe(false);
@@ -236,7 +236,7 @@ for (const interrupted of ['error', 'cancelled'] as const) {
       await expect(feedback(page, '提交详情')).toHaveAttribute('data-phase', 'idle');
       await expect(feedback(page, '文件差异')).toHaveAttribute('data-phase', 'idle');
       await expect(page.locator('.diff-header h2')).toHaveText('b.txt');
-      await expect(page.locator('.code-scroll')).toContainText('+committed-b.txt');
+      await expect(page.getByTestId('diff-scroll')).toContainText('+committed-b.txt');
       expect(await readingState(page)).toEqual(before);
       await expect(page.locator('.commit-files .file-row[aria-pressed="true"]')).toContainText('b.txt');
     } finally { retry.release(); }
@@ -247,7 +247,7 @@ for (const interrupted of ['error', 'cancelled'] as const) {
 for (const target of [{ action: 'change', scope: '文件差异' }, { action: 'history', scope: '提交历史' }]) {
   test(`${target.action}: a mismatched current response stamp stops loading, retains old data and can be retried`, async ({ page }) => {
     await open(page, target.action === 'history');
-    const originalRows = await page.locator('.commit-row').allTextContents();
+    const originalRows = await page.getByTestId('commit-row').allTextContents();
     const hold = await holdNext(page, target.action);
     try {
       await refresh(page); await hold.pending; await hold.finish('wrong-stamp');
@@ -255,8 +255,8 @@ for (const target of [{ action: 'change', scope: '文件差异' }, { action: 'hi
       await expect(area).toHaveAttribute('data-phase', 'error');
       await expect(area.getByRole('alert')).toContainText('身份不匹配');
       await expect(area.getByRole('button', { name: `取消${target.scope}读取`, exact: true })).toHaveCount(0);
-      await expect(page.locator('.code-scroll')).toContainText(target.action === 'history' ? '+committed-a.txt' : '+working-a.txt');
-      if (target.action === 'history') expect(await page.locator('.commit-row').allTextContents()).toEqual(originalRows);
+      await expect(page.getByTestId('diff-scroll')).toContainText(target.action === 'history' ? '+committed-a.txt' : '+working-a.txt');
+      if (target.action === 'history') expect(await page.getByTestId('commit-row').allTextContents()).toEqual(originalRows);
       await area.getByRole('button', { name: `重试${target.scope}读取`, exact: true }).click();
       await expect(area).toHaveAttribute('data-phase', 'idle');
       await expect(area.getByRole('alert')).toHaveCount(0);
@@ -270,7 +270,7 @@ test('an older failed file request cannot change a newer successful selection or
   try {
     await page.locator('.group-unstaged .file-row').filter({ hasText: 'b.txt' }).click(); await hold.pending;
     await page.locator('.group-unstaged .file-row').filter({ hasText: 'a.txt' }).click();
-    await expect(page.locator('.code-scroll')).toContainText('+working-a.txt');
+    await expect(page.getByTestId('diff-scroll')).toContainText('+working-a.txt');
     await expect(feedback(page, '文件差异')).toHaveAttribute('data-phase', 'idle');
     await hold.finish('error'); await page.waitForTimeout(100);
     await expect(page.locator('.diff-header h2')).toHaveText('a.txt');
@@ -290,7 +290,7 @@ test('a genuinely new filesystem invalidation resumes a cancelled read without a
     await expect(feedback(page, '文件差异')).toHaveAttribute('data-phase', 'cancelled');
     await hold.finish();
     await writeFile(join(repo, 'a.txt'), contents('external-after-cancel'));
-    await expect(page.locator('.code-scroll')).toContainText('+external-after-cancel', { timeout: 10000 });
+    await expect(page.getByTestId('diff-scroll')).toContainText('+external-after-cancel', { timeout: 10000 });
     await expect(feedback(page, '文件差异')).toHaveAttribute('data-phase', 'idle');
     await expect(page.getByRole('alert')).toHaveCount(0);
     await expect(page.locator('.info-banner')).toHaveCount(0);
@@ -310,7 +310,7 @@ test('automatic stale comparison recovery clears its feedback without a persiste
   try {
     await refresh(page); await hold.pending; await hold.finish('stale');
     await expect(feedback(page, '文件差异')).toHaveAttribute('data-phase', 'idle');
-    await expect(page.locator('.code-scroll')).toContainText('+working-a.txt');
+    await expect(page.getByTestId('diff-scroll')).toContainText('+working-a.txt');
     await expect(page.getByRole('alert')).toHaveCount(0);
     await expect(page.locator('.info-banner')).toHaveCount(0);
     await expect(page.getByRole('status').filter({ hasText: /重新读取概览|发起新一轮读取/ })).toHaveCount(0);
@@ -323,7 +323,7 @@ test('a cleared file selection has no synthetic diff read or cancel while its ov
   await open(page);
   const filter = page.getByLabel('筛选当前改动文件', { exact: true });
   await filter.fill('no-matching-file');
-  await expect(page.locator('.code-scroll')).toHaveCount(0);
+  await expect(page.getByTestId('diff-scroll')).toHaveCount(0);
   await expect(page.locator('.file-row[aria-pressed="true"]')).toHaveCount(0);
   const hold = await holdNext(page, 'overview');
   try {
@@ -334,7 +334,7 @@ test('a cleared file selection has no synthetic diff read or cancel while its ov
     await expect(page.getByRole('status', { name: /正在读取.*文件差异/ })).toHaveCount(0);
     await expect(filter).toBeFocused();
     await hold.finish();
-    await expect(page.locator('.code-scroll')).toHaveCount(0);
+    await expect(page.getByTestId('diff-scroll')).toHaveCount(0);
     await expect(feedback(page, '文件差异')).toHaveAttribute('data-phase', 'idle');
   } finally { hold.release(); }
 });

@@ -1,6 +1,7 @@
 import { constants, type Stats } from 'node:fs';
-import { chmod, link, lstat, mkdir, open, opendir, realpath, rename, unlink } from 'node:fs/promises';
+import { chmod, link, lstat, mkdir, open, opendir, realpath, unlink } from 'node:fs/promises';
 import path from 'node:path';
+import { checkPrivate, privateDirectoryPermissions, syncDirectory, replaceFile, openRead } from '../../git-write/src/filesystem.js';
 import { createHash, randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import { QueryError, repositorySchema, operationReceiptSchema, type RepositoryIdentity } from '@git-view/contracts';
@@ -24,25 +25,19 @@ function parseReceipt(data: unknown, operationId?: string): StoredReceipt {
   return parsed.data;
 }
 
-function privateStat(stat: Stats, directory: boolean) {
-  if (stat.isSymbolicLink() || (directory ? !stat.isDirectory() : !stat.isFile()) || (process.getuid && stat.uid !== process.getuid()) || (stat.mode & 0o077)) throw unsafe();
-}
 async function privateDirectory(directory: string) {
   await mkdir(directory, { recursive: true, mode: 0o700 });
   const stat = await lstat(directory);
   if (!stat.isDirectory() || stat.isSymbolicLink() || (process.getuid && stat.uid !== process.getuid())) throw unsafe();
-  await chmod(directory, 0o700);
-}
-async function syncDirectory(directory: string) {
-  const handle = await open(directory, constants.O_RDONLY | constants.O_NOFOLLOW);
-  try { await handle.sync(); } finally { await handle.close(); }
+  if (process.platform === 'win32') await privateDirectoryPermissions(directory);
+  else await chmod(directory, 0o700);
 }
 async function readJson(file: string): Promise<unknown | undefined> {
   let handle;
   try {
-    handle = await open(file, constants.O_RDONLY | constants.O_NOFOLLOW);
+    handle = await openRead(file);
     const stat = await handle.stat();
-    privateStat(stat, false);
+    await checkPrivate(file, stat, false);
     if (stat.size > MAX_RECORD_BYTES) throw new QueryError('INTERNAL_ERROR', '操作回执过大，无法可靠读取。');
     return JSON.parse(await handle.readFile('utf8'));
   } catch (error) {
@@ -52,7 +47,7 @@ async function readJson(file: string): Promise<unknown | undefined> {
   } finally { await handle?.close(); }
 }
 async function assertTarget(file: string) {
-  try { privateStat(await lstat(file), false); } catch (error) { if (!missing(error)) throw error; }
+  try { await checkPrivate(file, await lstat(file), false); } catch (error) { if (!missing(error)) throw error; }
 }
 async function atomicJson(file: string, data: unknown) {
   const text = JSON.stringify(data);
@@ -66,7 +61,7 @@ async function atomicJson(file: string, data: unknown) {
   } finally { await handle.close(); }
   try {
     await assertTarget(file);
-    await rename(temporary, file);
+    await replaceFile(temporary, file);
     await syncDirectory(path.dirname(file));
   } finally { await unlink(temporary).catch(error => { if (!missing(error)) throw error; }); }
 }
@@ -87,8 +82,8 @@ export async function createReceiptStore(directory: string) {
   const markerPath = (operationId: string) => path.join(pendingRoot, `${hash(operationId)}.json`);
   const lockPath = (repository: RepositoryIdentity) => path.join(root, `${hash(repository.gitDir)}.lock`);
   const commonLockPath = (repository: RepositoryIdentity) => path.join(root, `common-${hash(repository.commonGitDir)}.lock`);
-  const secureRoot = async () => privateStat(await lstat(root), true);
-  const securePending = async () => { await secureRoot(); privateStat(await lstat(pendingRoot), true); };
+  const secureRoot = async () => checkPrivate(root, await lstat(root), true);
+  const securePending = async () => { await secureRoot(); await checkPrivate(pendingRoot, await lstat(pendingRoot), true); };
   async function clearPending(operationId: string) {
     await securePending();
     await assertTarget(markerPath(operationId));
@@ -108,16 +103,21 @@ export async function createReceiptStore(directory: string) {
       let count = 0, receiptCount = 0, bytes = 0;
       // Completed history is intentionally not scanned. A marker is durable before
       // writer invocation and removed only after a terminal receipt is durable.
+      const names: string[] = [];
       const directory = await opendir(pendingRoot);
       for await (const entry of directory) {
         if (++count > 2000) throw new QueryError('OUTPUT_LIMIT', '待核实索引超过 2000 项，无法完整检查待核实操作。请先整理应用数据目录。');
         if (!entry.name.endsWith('.json')) continue;
         if (++receiptCount > 1000) throw new QueryError('OUTPUT_LIMIT', '待核实操作超过 1000 项，无法完整检查。请先按操作 ID 核对回执。');
         if (!/^[a-f0-9]{64}\.json$/.test(entry.name)) throw new QueryError('INTERNAL_ERROR', '待核实索引含无法识别的文件，未忽略该文件。');
-        const marker = pendingMarkerSchema.safeParse(await readJson(path.join(pendingRoot, entry.name)));
-        if (!marker.success || hash(marker.data.operationId) !== entry.name.slice(0, -5)) throw new QueryError('INTERNAL_ERROR', '待核实索引内容无效，无法可靠恢复。');
+        names.push(entry.name);
+      }
+      // Reject an oversized scan before launching per-file native ACL checks.
+      for (const name of names) {
+        const marker = pendingMarkerSchema.safeParse(await readJson(path.join(pendingRoot, name)));
+        if (!marker.success || hash(marker.data.operationId) !== name.slice(0, -5)) throw new QueryError('INTERNAL_ERROR', '待核实索引内容无效，无法可靠恢复。');
         const file = receiptPath(marker.data.operationId);
-        const stat = await lstat(file); privateStat(stat, false);
+        const stat = await lstat(file); await checkPrivate(file, stat, false);
         bytes += stat.size;
         if (bytes > 16 * 1024 * 1024) throw new QueryError('OUTPUT_LIMIT', '操作回执超过 16 MiB，无法完整检查待核实操作。请先整理应用数据目录。');
         const data = await readJson(file);

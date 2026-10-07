@@ -1,5 +1,5 @@
 import { constants } from 'node:fs';
-import { lstat, open, readlink, mkdtemp, rename, rm, writeFile } from 'node:fs/promises';
+import { lstat, open, readlink, mkdtemp, rm, writeFile, mkdir } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -8,6 +8,7 @@ import { QueryError, repositorySchema, type ChangeEntry, type RepositoryIdentity
 import { createGitAdapter } from '../../git-cli/src/index.js';
 import { runPlumbing } from './runner.js';
 import { requireIndexWrites } from './platform.js';
+import { openRead, replaceFile, syncDirectory } from './filesystem.js';
 
 const MAX_FILE_BYTES = 64 * 1024 * 1024;
 const MAX_INDEX_BYTES = 32 * 1024 * 1024;
@@ -46,7 +47,7 @@ export async function optional(file: string, limit = MAX_INDEX_BYTES): Promise<B
     const info = await lstat(file);
     if (!info.isFile() || info.isSymbolicLink()) fail('仓库元数据不是普通文件，暂不支持写入。');
     if (info.size > limit) throw new QueryError('OUTPUT_LIMIT', '仓库元数据超过安全上限。');
-    const handle = await open(file, constants.O_RDONLY | constants.O_NOFOLLOW);
+    const handle = await openRead(file);
     try {
       const bytes = Buffer.alloc(Math.min(info.size + 1, limit + 1));
       let total = 0;
@@ -86,7 +87,7 @@ async function fileSnapshot(repository: RepositoryIdentity, name: string): Promi
     if (before.isSymbolicLink()) { bytes = await readlink(full, { encoding: 'buffer' }); kind = 'symlink'; }
     else if (before.isFile()) {
       if (before.size > BigInt(MAX_FILE_BYTES)) throw new QueryError('OUTPUT_LIMIT', '单个暂存文件超过 64 MiB，暂不支持。');
-      const handle = await open(full, constants.O_RDONLY | constants.O_NOFOLLOW);
+      const handle = await openRead(full);
       try {
         const opened = await handle.stat({ bigint: true });
         if (opened.dev !== before.dev || opened.ino !== before.ino || !opened.isFile()) stale();
@@ -155,8 +156,6 @@ export async function readWriteState(repository: RepositoryIdentity, paths: stri
   for (const directory of [repository.worktreeRoot, repository.gitDir, repository.commonGitDir]) { const info = await lstat(directory, { bigint: true }); identities.push(`${directory}:${info.dev}:${info.ino}`); }
   for (const operation of operations) { try { await lstat(path.join(repository.gitDir, operation)); fail('合并、变基、挑选等进行中的操作必须先结束，暂不修改 index。'); } catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; } }
   const config = await configGuard(repository, signal);
-  if (kind === 'stage-files' && !falseValue(config.values.get('core.autocrlf') ?? 'false')) fail('首批整文件暂存不支持 core.autocrlf 转换；请使用 Git 完成此类暂存。');
-  if (falseValue(config.values.get('core.symlinks') ?? 'true')) fail('暂不支持 core.symlinks=false 的工作区写入。');
   const headOid = (await runPlumbing(repository, ['rev-parse', '--verify', '--quiet', 'HEAD'], { signal, allowMissing: true })).toString('ascii').trim() || null;
   const head = await optional(path.join(repository.gitDir, 'HEAD'));
   const objectFormat = (await runPlumbing(repository, ['rev-parse', '--show-object-format'], { signal })).toString('ascii').trim();
@@ -164,7 +163,9 @@ export async function readWriteState(repository: RepositoryIdentity, paths: stri
   inspectIndex(index, objectFormat === 'sha256' ? 32 : 20);
   const indexEntries = parseEntries(await runPlumbing(repository, ['ls-files', '--stage', '-z'], { signal }));
   const headEntries = headOid ? parseEntries(await runPlumbing(repository, ['ls-tree', '-r', '-z', '--full-tree', headOid], { signal }), true) : [];
+  if (falseValue(config.values.get('core.symlinks') ?? 'true') && [...indexEntries, ...headEntries].some(entry => entry.mode === '120000')) fail('core.symlinks=false 的仓库含符号链接条目，暂不支持写入。');
   const attrs: string[] = [];
+  const normalization = new Map<string, { text: string; eol: string }>();
   const allFiles = await runPlumbing(repository, ['ls-files', '-z', '--cached', '--others', '--exclude-standard'], { signal });
   for (const cached of [false, true]) {
     if (allFiles.length && config.filters.size) {
@@ -178,7 +179,11 @@ export async function readWriteState(repository: RepositoryIdentity, paths: stri
     if (triples.length % 3) fail('无法可靠读取文件属性。');
     for (let i = 0; i < triples.length; i += 3) {
       const attribute = triples[i + 1], value = triples[i + 2];
-      if (!['unspecified', 'unset'].includes(value!) && (attribute === 'filter' || kind === 'stage-files')) throw new QueryError('UNSUPPORTED_FILTER', `首批整文件暂存不支持 ${attribute}=${value} 内容转换；请使用 Git 完成此类暂存。`);
+      if (!cached && (attribute === 'text' || attribute === 'eol')) {
+        const settings = normalization.get(triples[i]!) ?? { text: 'unspecified', eol: 'unspecified' };
+        settings[attribute] = value!; normalization.set(triples[i]!, settings);
+      }
+      if (!['unspecified', 'unset'].includes(value!) && (attribute === 'filter' || (kind === 'stage-files' && !['text', 'eol'].includes(attribute!)))) throw new QueryError('UNSUPPORTED_FILTER', `首批整文件暂存不支持 ${attribute}=${value} 内容转换；请使用 Git 完成此类暂存。`);
     }
   }
   const identityGuard = { identities, config: config.hash, head: head?.toString('base64'), headOid };
@@ -186,7 +191,7 @@ export async function readWriteState(repository: RepositoryIdentity, paths: stri
   // A receipt verifies the resulting index, HEAD and identity. Working-tree attribute
   // edits may legitimately change cached attributes as part of the installed index.
   const evidenceGuard = digest(JSON.stringify(identityGuard));
-  return { guard, evidenceGuard, indexHash: digest(index ?? 'missing'), index, indexEntries, headEntries, headOid, filemode: !falseValue(config.values.get('core.filemode') ?? 'true') };
+  return { guard, evidenceGuard, indexHash: digest(index ?? 'missing'), index, indexEntries, headEntries, headOid, normalization, conversionConfig: { autocrlf: config.values.get('core.autocrlf') ?? 'false', safecrlf: config.values.get('core.safecrlf') ?? 'false', eol: config.values.get('core.eol') ?? 'native' }, symlinks: !falseValue(config.values.get('core.symlinks') ?? 'true'), filemode: !falseValue(config.values.get('core.filemode') ?? 'true') };
 }
 function same(left: unknown, right: unknown) { return JSON.stringify(left) === JSON.stringify(right); }
 
@@ -210,6 +215,7 @@ export function createGitWriteAdapter() {
         const { snapshot } = await fileSnapshot(repository, name);
         selectedBytes += snapshot.size;
         if (selectedBytes > MAX_SELECTED_BYTES) throw new QueryError('OUTPUT_LIMIT', '所选文件总大小超过 128 MiB，请分批暂存。');
+        if (snapshot.kind === 'symlink' && (process.platform === 'win32' || !before.symlinks)) fail('core.symlinks=false 时不暂存符号链接。');
         files.push(snapshot);
       }
       const after = await readWriteState(repository, paths, kind, signal);
@@ -224,9 +230,9 @@ export function createGitWriteAdapter() {
       let lock;
       try { lock = await open(lockPath, 'wx', 0o600); }
       catch (error) { if ((error as NodeJS.ErrnoException).code === 'EEXIST') throw new QueryError('REPOSITORY_BUSY', 'index.lock 已存在；未触碰其他 Git 操作的锁。'); throw error; }
-      const owned = await lock.stat();
+      const owned = await lock.stat({ bigint: true });
       let temporary: string | undefined, installed = false;
-      const assertLock = async () => { const current = await lstat(lockPath); if (!current.isFile() || current.dev !== owned.dev || current.ino !== owned.ino) throw new QueryError('REPOSITORY_BUSY', 'index 锁的所有权已变化，未安装结果。'); };
+      const assertLock = async () => { const current = await lstat(lockPath, { bigint: true }); if (!current.isFile() || current.dev !== owned.dev || current.ino !== owned.ino) throw new QueryError('REPOSITORY_BUSY', 'index 锁的所有权已变化，未安装结果。'); };
       const validate = async (includeBytes = false) => {
         await assertLock();
         const state = await readWriteState(repository, paths, kind);
@@ -246,7 +252,17 @@ export function createGitWriteAdapter() {
         const { state, files } = await validate(true);
         temporary = await mkdtemp(path.join(tmpdir(), 'git-view-index-'));
         const alternate = path.join(temporary, 'index');
-        if (state.index) await writeFile(alternate, state.index, { mode: 0o600 });
+        const canonicalDir = path.join(temporary, 'canonical');
+        const canonicalWork = path.join(temporary, 'worktree');
+        await mkdir(canonicalWork);
+        await mkdir(path.join(canonicalDir, 'info'), { recursive: true });
+        await mkdir(path.join(canonicalDir, 'objects'), { recursive: true });
+        await mkdir(path.join(canonicalDir, 'refs'));
+        await writeFile(path.join(canonicalDir, 'HEAD'), 'ref: refs/heads/main\n');
+        if (state.index) {
+          await writeFile(alternate, state.index, { mode: 0o600 });
+          await writeFile(path.join(canonicalDir, 'index'), state.index, { mode: 0o600 });
+        }
         const oidLength = state.headOid?.length ?? state.indexEntries[0]?.oid.length ?? ((await runPlumbing(repository, ['rev-parse', '--show-object-format'])).toString().trim() === 'sha256' ? 64 : 40);
         const zero = '0'.repeat(oidLength);
         const updates: string[] = [];
@@ -257,7 +273,30 @@ export function createGitWriteAdapter() {
             updates.push(head ? `${head.mode} ${head.oid}\t${name}\0` : `0 ${zero}\t${name}\0`);
           } else if (file.snapshot.kind === 'missing') updates.push(`0 ${zero}\t${name}\0`);
           else {
-            const oid = (await runPlumbing(repository, ['hash-object', '-w', '--stdin', '--no-filters'], { input: file.bytes })).toString('ascii').trim();
+            // Only built-in conversion is allowed. Use captured attributes/config in
+            // isolated Git metadata: concurrent .gitattributes or info/attributes
+            // edits in the real repository can never launch a clean/process filter.
+            const settings = state.normalization.get(name) ?? { text: 'unspecified', eol: 'unspecified' };
+            if (!['unspecified', 'unset', 'set', 'auto'].includes(settings.text) || !['unspecified', 'unset', 'lf', 'crlf'].includes(settings.eol)) fail('不支持此换行属性值。');
+            const conversion = state.conversionConfig;
+            if (!['false', 'true', 'input', '0', '1', 'yes', 'no', 'on', 'off'].includes(conversion.autocrlf.toLowerCase()) || !['false', 'true', 'warn', '0', '1', 'yes', 'no', 'on', 'off'].includes(conversion.safecrlf.toLowerCase()) || !['native', 'lf', 'crlf'].includes(conversion.eol.toLowerCase())) fail('不支持此换行配置值。');
+            const objectFormat = oidLength === 64 ? 'sha256' : 'sha1';
+            await writeFile(path.join(canonicalDir, 'config'), `[core]\nrepositoryformatversion = ${objectFormat === 'sha256' ? 1 : 0}\nbare = false\nautocrlf = ${conversion.autocrlf}\nsafecrlf = ${conversion.safecrlf}\neol = ${conversion.eol}\n${objectFormat === 'sha256' ? '[extensions]\nobjectformat = sha256\n' : ''}`);
+            await writeFile(path.join(canonicalDir, 'info', 'attributes'), `* ${settings.text === 'unset' ? '-text' : settings.text === 'set' ? 'text' : settings.text === 'auto' ? 'text=auto' : '!text'} ${['lf', 'crlf'].includes(settings.eol) ? `eol=${settings.eol}` : '!eol'} !filter !ident !working-tree-encoding\n`);
+            let oid: string;
+            if (file.snapshot.kind === 'symlink') oid = (await runPlumbing(repository, ['hash-object', '-w', '--stdin', '--no-filters'], { input: file.bytes })).toString('ascii').trim();
+            else {
+              // Ordinary Git add consults the original index before autocrlf/text=auto
+              // conversion (e.g. legacy CRLF blobs). Keep that behavior in isolation.
+              const selectedFile = path.join(canonicalWork, name);
+              await mkdir(path.dirname(selectedFile), { recursive: true });
+              await writeFile(selectedFile, file.bytes!);
+              const normalization = { gitDir: canonicalDir, worktree: canonicalWork };
+              await runPlumbing(repository, ['add', '--force', '--', name], { normalization });
+              const entry = parseEntries(await runPlumbing(repository, ['ls-files', '--stage', '-z', '--', name], { normalization })).find(entry => entry.path === name);
+              if (!entry) throw new QueryError('INTERNAL_ERROR', '隔离转换未生成所选文件。');
+              oid = entry.oid;
+            }
             const prior = state.indexEntries.find((entry) => entry.path === name);
             const mode = file.snapshot.kind === 'symlink' ? '120000' : !state.filemode ? (prior?.mode.startsWith('100') ? prior.mode : '100644') : file.snapshot.mode & 0o100 ? '100755' : '100644';
             updates.push(`${mode} ${oid}\t${name}\0`);
@@ -277,13 +316,12 @@ export function createGitWriteAdapter() {
         await lock.sync();
         await validate();
         await assertLock();
-        await rename(lockPath, path.join(repository.gitDir, 'index'));
+        await replaceFile(lockPath, path.join(repository.gitDir, 'index'));
         installed = true;
-        const directory = await open(repository.gitDir, constants.O_RDONLY);
-        try { await directory.sync(); } finally { await directory.close(); }
+        await syncDirectory(repository.gitDir);
       } finally {
         await lock.close();
-        if (!installed) { try { const current = await lstat(lockPath); if (current.dev === owned.dev && current.ino === owned.ino) await rm(lockPath); } catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; } }
+        if (!installed) { try { const current = await lstat(lockPath, { bigint: true }); if (current.dev === owned.dev && current.ino === owned.ino) await rm(lockPath); } catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; } }
         if (temporary) await rm(temporary, { recursive: true, force: true });
       }
     },

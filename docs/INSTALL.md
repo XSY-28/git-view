@@ -5,7 +5,7 @@
 ## macOS Apple silicon
 
 1. 确认系统 Git 可用，在终端执行 `git --version`。如果系统提示安装 Command Line Tools，按提示完成；使用安装包不需要 Node、pnpm、Rust 或完整 Xcode。
-2. 下载 `Git-View_0.2.0_macos-arm64.dmg`。可在下载目录执行 `shasum -a 256 -c Git-View_0.2.0_macos-arm64.dmg.sha256` 核对文件。
+2. 下载 `Git-View_0.3.0_macos-arm64.dmg`。可在下载目录执行 `shasum -a 256 -c Git-View_0.3.0_macos-arm64.dmg.sha256` 核对文件。
 3. 退出正在运行的 Git View，打开 DMG，双击 `Install Git View.command`。安装无需管理员权限，固定安装到 `~/Applications/Git View.app`，完成后自动打开应用。
 4. 安装完成后弹出 DMG。不要把另一份 Git View.app 放在 `/Applications`，也不要保留解压的备份应用；这样能避免多个同名搜索入口。
 
@@ -20,11 +20,11 @@
 ## Windows x64
 
 1. 安装 [Git for Windows](https://gitforwindows.org/)，确保新开的终端中 `git --version` 能成功。
-2. 下载 `Git-View_0.2.0_windows-x64-setup.exe`。用 PowerShell 执行 `Get-FileHash .\Git-View_0.2.0_windows-x64-setup.exe -Algorithm SHA256`，与同版本 `.sha256` 文件中的哈希比较。
+2. 下载 `Git-View_0.3.0_windows-x64-setup.exe`。用 PowerShell 执行 `Get-FileHash .\Git-View_0.3.0_windows-x64-setup.exe -Algorithm SHA256`，与同版本 `.sha256` 文件中的哈希比较。
 3. 运行安装向导。应用安装到当前用户目录，不要求管理员权限；缺少 Microsoft WebView2 时安装程序会下载运行时，因此首次安装可能需要联网。
 4. 从开始菜单打开 Git View，点击顶部打开仓库按钮选择本地仓库，或展开“手动输入路径”填入仓库的完整路径。
 
-Windows 当前只支持查看，包括当前改动、历史、版本比较和历史调查。暂存、取消暂存、提交、创建和切换分支均由后台明确拒绝。浏览器 HTTP 备用入口暂不支持 Windows，请使用桌面应用。
+Windows 桌面应用支持查看和预览确认后的暂存、取消暂存、提交、创建和切换本地分支。写入使用安装包内的原生组件；仅使用 Node CLI 不提供 Windows 写入。Git 内置 CRLF/text/eol 转换受支持；外部过滤器、ident、working-tree-encoding 和未启用符号链接的含符号链接仓库仍会拒绝写入。浏览器 HTTP 备用入口暂不支持 Windows，请使用桌面应用。
 
 当前 EXE 未做代码签名，Windows 可能显示未知发布者或 SmartScreen 提示。仅在核对 GitHub 下载来源和哈希后使用系统提供的“更多信息 → 仍要运行”入口，不要关闭 SmartScreen。若设备的组织策略禁止未知发布者，需要遵循该设备的策略。
 
@@ -35,6 +35,6 @@ Windows 当前只支持查看，包括当前改动、历史、版本比较和历
 包构建工作流分别在 macOS ARM 与 Windows x64 runner 上执行类型检查、适用的真实 Git 测试和 Rust 宿主测试，再构建安装包。
 
 - macOS：验证 DMG 完整性和挂载、执行包内安装程序 dry-run，并对从 DMG 解压出的内容验证内置 Node、中文/空格路径、仓库只读指纹和 stdio 退出。原生 GUI 在本机固定安装路径验收。
-- Windows：运行真正的 NSIS 静默安装到包含中文和空格的目录，对安装结果做包内运行检查；启动安装后的 release 应用，用 WebView2 调试连接驱动真实窗口和 Tauri IPC，检查打开中文路径仓库、暂存/未暂存差异、历史差异、正常关闭与 Node 子进程回收，最后卸载。
+- Windows：运行真正的 NSIS 静默安装到包含中文和空格的目录，对安装结果做包内运行检查；启动安装后的 release 应用，用 WebView2 调试连接驱动真实窗口和 Tauri IPC，检查打开中文路径仓库、暂存/未暂存差异、历史差异、CRLF 文件的暂存与取消暂存、提交、创建与切换分支、正常关闭与 Node 子进程回收，最后卸载。
 
 这些检查的通过与失败以该版本对应的 GitHub Actions 和随包验证报告为准。Windows runner 是 CI 系统，不能替代所有 Windows 10/11 实体电脑上的验收；SmartScreen、Gatekeeper、人工安装向导和原生系统目录选择对话框也需要目标设备复测。当前安装包没有自动更新机制。

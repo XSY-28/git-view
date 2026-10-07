@@ -1,4 +1,5 @@
 import { afterAll, describe, expect, it } from 'vitest';
+import { execFileSync } from 'node:child_process';
 import { createHash, randomUUID } from 'node:crypto';
 import { chmodSync, lstatSync, readFileSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
@@ -29,7 +30,7 @@ async function preview(operations: Operations, read: ReturnType<typeof createGit
   return operations.preview(session, { kind, entryIds: [group.find(entry => entry.path === 'chosen.txt')!.id], fingerprint: overview.fingerprint });
 }
 
-describe.skipIf(process.platform === 'win32')('durable file operation coordination (POSIX)', { timeout: GIT_OPERATION_TEST_TIMEOUT }, () => {
+describe('durable file operation coordination', { timeout: GIT_OPERATION_TEST_TIMEOUT }, () => {
   it('stages V3 in full and unstages to V1 while preserving V3 and unselected files', async () => {
     const { root, read, session, operations, directory } = await setup();
     git(root, ['add', '--', 'chosen.txt']); write(root, 'chosen.txt', 'V3\n'); write(root, 'other.txt', 'not selected\n');
@@ -42,8 +43,10 @@ describe.skipIf(process.platform === 'win32')('durable file operation coordinati
     expect(git(root, ['show', ':chosen.txt'])).toBe('V3');
     expect(git(root, ['show', ':other.txt'])).toBe('untouched');
     expect(readFileSync(path.join(root, 'chosen.txt'), 'utf8')).toBe('V3\n');
-    expect(lstatSync(receiptPath(directory, operationId)).mode & 0o777).toBe(0o600);
-    expect(lstatSync(path.join(directory, 'operations')).mode & 0o777).toBe(0o700);
+    if (process.platform !== 'win32') {
+      expect(lstatSync(receiptPath(directory, operationId)).mode & 0o777).toBe(0o600);
+      expect(lstatSync(path.join(directory, 'operations')).mode & 0o777).toBe(0o700);
+    }
     const unstage = await preview(operations, read, session, 'unstage-files');
     expect((await operations.execute(session, unstage.previewId, randomUUID())).status).toBe('succeeded');
     expect(git(root, ['show', ':chosen.txt'])).toBe('V1');
@@ -219,9 +222,16 @@ describe.skipIf(process.platform === 'win32')('durable file operation coordinati
     restorePendingMarker(directory, id);
     await expect(operations.receipt(session, id)).rejects.toMatchObject({ code: 'INTERNAL_ERROR' });
     await expect(operations.pending(session)).rejects.toMatchObject({ code: 'INTERNAL_ERROR' });
-    writeFileSync(file, original); chmodSync(file, 0o644);
-    await expect(operations.receipt(session, id)).rejects.toMatchObject({ code: 'PERMISSION_DENIED' });
-    chmodSync(file, 0o600);
+    writeFileSync(file, original);
+    if (process.platform !== 'win32') {
+      chmodSync(file, 0o644);
+      await expect(operations.receipt(session, id)).rejects.toMatchObject({ code: 'PERMISSION_DENIED' });
+      chmodSync(file, 0o600);
+    } else {
+      execFileSync('icacls', [file, '/grant', '*S-1-1-0:(R)']);
+      try { await expect(operations.receipt(session, id)).rejects.toMatchObject({ code: 'PERMISSION_DENIED' }); }
+      finally { execFileSync('icacls', [file, '/remove:g', '*S-1-1-0']); }
+    }
     if (process.platform !== 'win32') {
       const target = path.join(temporaryDirectory(), 'target'); writeFileSync(target, original, { mode: 0o600 }); unlinkSync(file); symlinkSync(target, file);
       await expect(operations.receipt(session, id)).rejects.toMatchObject({ code: 'PERMISSION_DENIED' });

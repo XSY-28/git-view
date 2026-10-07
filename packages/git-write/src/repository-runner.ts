@@ -1,4 +1,5 @@
 import { spawn } from 'node:child_process';
+import { windowsPlatform } from './filesystem.js';
 import { OPERATION_LIMITS, QueryError, type RepositoryIdentity } from '@git-view/contracts';
 
 export type RepositoryCommand =
@@ -16,6 +17,7 @@ export function runRepositoryCommand(repository: RepositoryIdentity, command: Re
   const env: NodeJS.ProcessEnv = {};
   for (const [key, value] of Object.entries(process.env)) if (!key.startsWith('GIT_')) env[key] = value;
   Object.assign(env, { GIT_DIR: repository.gitDir, GIT_WORK_TREE: repository.worktreeRoot, GIT_OPTIONAL_LOCKS: '0', GIT_TERMINAL_PROMPT: '0', GIT_NO_LAZY_FETCH: '1', GIT_EDITOR: 'false', GIT_SEQUENCE_EDITOR: 'false', GIT_REFLOG_ACTION: marker, LC_ALL: 'C', LANG: 'C' });
+  if (process.platform === 'win32') return windowsPlatform<CommandResult>({ operation: 'run-git', cwd: repository.worktreeRoot, ...command, marker, timeoutMs }, env);
   return new Promise((resolve, reject) => {
     // A timed-out hook/signer must not keep writing after its Git parent is killed.
     const child = spawn('git', ['--no-pager', '--literal-pathspecs', '-c', 'core.fsmonitor=false', '-c', 'core.untrackedCache=false', '-c', 'submodule.recurse=false', '-c', 'protocol.allow=never', '-c', 'core.logAllRefUpdates=true', '-c', 'gc.auto=0', '-c', 'maintenance.auto=false', ...args], { cwd: repository.worktreeRoot, env, shell: false, detached: process.platform !== 'win32', stdio: ['pipe', 'pipe', 'pipe'] });

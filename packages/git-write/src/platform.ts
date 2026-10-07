@@ -1,12 +1,13 @@
 import { QueryError } from '@git-view/contracts';
+import { windowsHelper } from './filesystem.js';
 
-// The first writer relies on POSIX file modes, directory fsync and atomic
-// replacement. Keep read-only hosts usable until a Windows writer is verified.
+// Windows writes require the installed native ACL/replacement/process bridge.
+// Plain Node/stdio remains read-only if that component is unavailable.
 export function supportsIndexWrites(platform: NodeJS.Platform = process.platform) {
-  return platform !== 'win32';
+  return platform !== 'win32' || !!windowsHelper();
 }
 export function indexWritesUnavailable() {
-  return new QueryError('UNSUPPORTED_REPOSITORY', 'Windows 暂未开放 Git 写入；仓库查看仍可使用。');
+  return new QueryError('UNSUPPORTED_REPOSITORY', 'Windows 写入需要桌面原生组件，请使用完整安装包。');
 }
 export function requireIndexWrites(platform: NodeJS.Platform = process.platform): void {
   if (!supportsIndexWrites(platform)) throw indexWritesUnavailable();

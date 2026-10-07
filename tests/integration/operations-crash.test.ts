@@ -13,7 +13,6 @@ import { createGitWriteAdapter } from '../../packages/git-write/src/index.js';
 import { cleanupFixtures, commit, fixtureGit as git, repository, temporaryDirectory, write } from '../fixtures/git.js';
 
 afterAll(cleanupFixtures);
-const posixIt = process.platform === 'win32' ? it.skip : it;
 const hash = (value: string | Buffer) => createHash('sha256').update(value).digest('hex');
 const projectRoot = fileURLToPath(new URL('../../', import.meta.url));
 
@@ -34,7 +33,7 @@ function runUntilExit(bundle: string, args: string[]): Promise<{ code: number | 
   });
 }
 
-posixIt('recovers after actual SIGKILL between index installation and final receipt, without executing twice', async () => {
+it('recovers after actual SIGKILL between index installation and final receipt, without executing twice', async () => {
   // Every Git mutation, the bundled child, and its data directory live in fixture
   // roots. No process writes to the source checkout or uses the user's repository.
   const root = repository();
@@ -81,7 +80,7 @@ posixIt('recovers after actual SIGKILL between index installation and final rece
   });
 
   const terminated = await runUntilExit(bundle, [root, directory, operationId]);
-  expect(terminated, terminated.stderr).toMatchObject({ code: null, signal: 'SIGKILL' });
+  expect(terminated, terminated.stderr).toMatchObject(process.platform === 'win32' ? { code: 1, signal: null, stderr: '' } : { code: null, signal: 'SIGKILL' });
   const receiptFile = path.join(directory, 'operations', `${hash(operationId)}.json`);
   const pendingFile = path.join(directory, 'operations', 'pending', `${hash(operationId)}.json`);
   const interrupted = storedReceiptSchema.parse(JSON.parse(readFileSync(receiptFile, 'utf8')));
@@ -124,7 +123,7 @@ posixIt('recovers after actual SIGKILL between index installation and final rece
   expect(readFileSync(appLock, 'utf8')).toBe(originalLock);
 });
 
-posixIt('recovers a real committed OID after SIGKILL before the observed result is persisted', async () => {
+it('recovers a real committed OID after SIGKILL before the observed result is persisted', async () => {
   const root = repository();
   git(root, ['config', 'user.name', 'Crash Test']); git(root, ['config', 'user.email', 'test@example.invalid']); git(root, ['config', 'commit.gpgsign', 'false']);
   const hooks = path.join(temporaryDirectory(), 'hooks');
@@ -152,7 +151,7 @@ posixIt('recovers a real committed OID after SIGKILL before the observed result 
     await operations.execute(session, preview.previewId, operationId, true);
     throw new Error('Expected SIGKILL');
   ` }, outfile: bundle, bundle: true, platform: 'node', target: 'node24', format: 'esm', tsconfig: path.join(projectRoot, 'tsconfig.json'), logLevel: 'silent' });
-  const exit = await runUntilExit(bundle, [root, directory, operationId]); expect(exit, exit.stderr).toMatchObject({ code: null, signal: 'SIGKILL' });
+  const exit = await runUntilExit(bundle, [root, directory, operationId]); expect(exit, exit.stderr).toMatchObject(process.platform === 'win32' ? { code: 1, signal: null, stderr: '' } : { code: null, signal: 'SIGKILL' });
   const file = path.join(directory, 'operations', `${hash(operationId)}.json`);
   const interrupted = storedReceiptSchema.parse(JSON.parse(readFileSync(file, 'utf8')));
   expect(interrupted.receipt.status).toBe('running');

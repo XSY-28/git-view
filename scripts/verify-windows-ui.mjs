@@ -26,12 +26,13 @@ try {
   await mkdir(fixture);
   const git = (...args) => exec('git', ['-C', fixture, ...args], { env });
   await git('init', '-b', 'main');
-  await writeFile(join(fixture, '中文 文件.txt'), 'version one\n');
+  for (const [key, value] of Object.entries({ 'user.name': 'Installer Test', 'user.email': 'test@example.invalid', 'commit.gpgsign': 'false', 'core.hooksPath': '.git/hooks', 'core.autocrlf': 'true', 'core.symlinks': 'false', 'core.filemode': 'false' })) await git('config', key, value);
+  await writeFile(join(fixture, '中文 文件.txt'), 'version one\r\n');
   await git('add', '--', '中文 文件.txt');
   await git('-c', 'user.name=Installer Test', '-c', 'user.email=test@example.invalid', 'commit', '-m', 'native fixture commit');
-  await writeFile(join(fixture, '中文 文件.txt'), 'version two staged\n');
+  await writeFile(join(fixture, '中文 文件.txt'), 'version two staged\r\n');
   await git('add', '--', '中文 文件.txt');
-  await writeFile(join(fixture, '中文 文件.txt'), 'version three working\n');
+  await writeFile(join(fixture, '中文 文件.txt'), 'version three working\r\n');
   await writeFile(join(fixture, '未跟踪.txt'), 'untracked content\n');
   const fingerprint = async () => {
     const hash = createHash('sha256');
@@ -112,6 +113,51 @@ try {
   report.checks.noRendererErrors = true;
   assert.equal(await fingerprint(), before);
   report.checks.repositoryFingerprintUnchanged = true;
+  // Read-only evidence above is captured before deliberately exercising writes.
+  await page.getByRole('navigation', { name: /^(Main view|主视图)$/ }).getByRole('button', { name: /^(Changes|当前改动)/ }).click();
+  const confirm = async (consent = false) => {
+    const dialog = page.locator('.operation-dialog');
+    await expect(dialog).toBeVisible({ timeout: 30_000 });
+    if (consent) await dialog.locator('.operation-consent input').check();
+    await dialog.locator('footer .button.primary').click();
+    await expect(dialog).toBeHidden({ timeout: 30_000 });
+    await expect(page.locator('.operation-feedback')).toContainText('completed', { timeout: 30_000 });
+  };
+  await page.locator('.group-staged input[type=checkbox]').check();
+  await page.locator('[data-operation-preview]').click(); await confirm();
+  assert.equal((await git('show', ':中文 文件.txt')).stdout, 'version one\n');
+  assert.equal(await readFile(join(fixture, '中文 文件.txt'), 'utf8'), 'version three working\r\n');
+  report.checks.unstagePreservesWorkingFile = true;
+  // Select both ordinary files so the later branch switch starts clean.
+  for (const checkbox of await page.locator('.group-unstaged input[type=checkbox], .group-untracked input[type=checkbox]').all()) await checkbox.check();
+  await page.locator('[data-operation-preview]').click(); await confirm();
+  assert.equal((await git('show', ':中文 文件.txt')).stdout, 'version three working\n');
+  report.checks.stageWithCrlfConversion = true;
+  await page.getByRole('button', { name: 'Commit staged changes', exact: true }).click();
+  let form = page.getByRole('dialog', { name: 'Commit staged changes', exact: true });
+  await form.getByLabel('Commit message', { exact: true }).fill('native Windows UI commit');
+  await form.getByRole('button', { name: 'Preview operation', exact: true }).click(); await confirm(true);
+  assert.equal((await git('show', 'HEAD:中文 文件.txt')).stdout, 'version three working\n');
+  assert.equal((await git('rev-list', '--count', 'HEAD')).stdout.trim(), '2');
+  assert.equal((await git('status', '--porcelain')).stdout.trim(), '');
+  report.checks.commitFromInstalledWindow = true;
+  await page.getByRole('button', { name: 'Branch actions', exact: true }).click();
+  form = page.getByRole('dialog', { name: 'Branch actions', exact: true });
+  await form.getByLabel('New branch name', { exact: true }).fill('topic/windows');
+  await form.getByRole('button', { name: 'Preview operation', exact: true }).click(); await confirm(true);
+  assert.equal((await git('symbolic-ref', '--short', 'HEAD')).stdout.trim(), 'main');
+  assert.equal((await git('rev-parse', 'topic/windows')).stdout, (await git('rev-parse', 'HEAD')).stdout);
+  report.checks.createBranchWithoutSwitching = true;
+  await page.getByRole('button', { name: 'Branch actions', exact: true }).click();
+  form = page.getByRole('dialog', { name: 'Branch actions', exact: true });
+  await form.getByRole('button', { name: 'Switch branch', exact: true }).click();
+  await form.getByLabel('Target local branch', { exact: true }).selectOption('topic/windows');
+  await form.getByRole('button', { name: 'Preview operation', exact: true }).click(); await confirm(true);
+  assert.equal((await git('symbolic-ref', '--short', 'HEAD')).stdout.trim(), 'topic/windows');
+  report.checks.switchBranchFromInstalledWindow = true;
+  assert.deepEqual(errors, []);
+  await page.screenshot({ path: join(output, 'windows-native-operations.png') });
+
   await exec('powershell.exe', ['-NoProfile', '-Command', `$p = Get-Process -Id ${child.pid}; if (-not $p.CloseMainWindow()) { throw 'Native window did not accept close' }`]);
   const result = await Promise.race([exited, wait(15_000).then(() => { throw new Error('Native host did not exit after window close.'); })]);
   assert.equal(result.code, 0);

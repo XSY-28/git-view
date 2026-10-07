@@ -22,7 +22,7 @@ Git View 是一个本地 Git 图形工具，用于查看文件差异、浏览提
 
 ## 安装
 
-预览安装包可在 [打包工作流](https://github.com/XSY-28/git-view/actions/workflows/package.yml) 对应成功运行的 Artifacts 中下载（需要登录 GitHub）；正式发布后也会提供于 [Releases](https://github.com/XSY-28/git-view/releases)。两种包都自带 Node 运行时，使用时只需系统 Git，无需另装 Node、pnpm 或 Rust。
+在 [GitHub Releases](https://github.com/XSY-28/git-view/releases/latest) 下载当前版本的安装包和 `.sha256` 校验文件，无需登录 GitHub。两种包都自带 Node 运行时，使用时只需系统 Git，无需另装 Node、pnpm 或 Rust。
 
 - **macOS Apple silicon**：下载 `macos-arm64.dmg`，打开后先退出 Git View，再双击 **Install Git View.command**。安装位置固定为 `~/Applications/Git View.app`，旧版本保留为 ZIP；完成后弹出磁盘映像。不要再复制一份到 `/Applications`。
 - **Windows x64**：下载 `windows-x64-setup.exe`，运行安装向导，再从开始菜单打开。需要 Git for Windows 与 WebView2；缺少 WebView2 时安装程序会下载运行时。Windows 仅支持查看，不开放暂存、提交和分支写入。

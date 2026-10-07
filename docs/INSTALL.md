@@ -1,6 +1,6 @@
 # 安装 Git View 预览包
 
-在 [打包工作流](https://github.com/XSY-28/git-view/actions/workflows/package.yml) 的成功运行中下载对应平台的 Artifacts ZIP（需要登录 GitHub），解压后取出安装包与 `.sha256` 文件。正式发布后也可在 [GitHub Releases](https://github.com/XSY-28/git-view/releases) 下载同版本文件。当前目标平台为 macOS 13.5 及以上的 Apple silicon（arm64）和 Windows x64，尚不提供 Intel Mac、Windows ARM 或 Linux 安装包。macOS 下限由包内 [Node 24 的平台要求](https://github.com/nodejs/node/blob/v24.19.0/BUILDING.md#platform-list)决定。
+在 [GitHub Releases](https://github.com/XSY-28/git-view/releases/latest) 下载对应平台的安装包与同版本 `.sha256` 文件，无需登录 GitHub。开发构建也可从 [打包工作流](https://github.com/XSY-28/git-view/actions/workflows/package.yml) 的成功运行中下载 Artifacts ZIP（需要登录 GitHub）。当前目标平台为 macOS 13.5 及以上的 Apple silicon（arm64）和 Windows x64，尚不提供 Intel Mac、Windows ARM 或 Linux 安装包。macOS 下限由包内 [Node 24 的平台要求](https://github.com/nodejs/node/blob/v24.19.0/BUILDING.md#platform-list)决定。
 
 ## macOS Apple silicon
 

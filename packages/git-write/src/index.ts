@@ -230,9 +230,9 @@ export function createGitWriteAdapter() {
       let lock;
       try { lock = await open(lockPath, 'wx', 0o600); }
       catch (error) { if ((error as NodeJS.ErrnoException).code === 'EEXIST') throw new QueryError('REPOSITORY_BUSY', 'index.lock 已存在；未触碰其他 Git 操作的锁。'); throw error; }
-      const owned = await lock.stat();
+      const owned = await lock.stat({ bigint: true });
       let temporary: string | undefined, installed = false;
-      const assertLock = async () => { const current = await lstat(lockPath); if (!current.isFile() || current.dev !== owned.dev || current.ino !== owned.ino) throw new QueryError('REPOSITORY_BUSY', 'index 锁的所有权已变化，未安装结果。'); };
+      const assertLock = async () => { const current = await lstat(lockPath, { bigint: true }); if (!current.isFile() || current.dev !== owned.dev || current.ino !== owned.ino) throw new QueryError('REPOSITORY_BUSY', 'index 锁的所有权已变化，未安装结果。'); };
       const validate = async (includeBytes = false) => {
         await assertLock();
         const state = await readWriteState(repository, paths, kind);
@@ -321,7 +321,7 @@ export function createGitWriteAdapter() {
         await syncDirectory(repository.gitDir);
       } finally {
         await lock.close();
-        if (!installed) { try { const current = await lstat(lockPath); if (current.dev === owned.dev && current.ino === owned.ino) await rm(lockPath); } catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; } }
+        if (!installed) { try { const current = await lstat(lockPath, { bigint: true }); if (current.dev === owned.dev && current.ino === owned.ino) await rm(lockPath); } catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; } }
         if (temporary) await rm(temporary, { recursive: true, force: true });
       }
     },

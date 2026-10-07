@@ -24,7 +24,7 @@
 3. 运行安装向导。应用安装到当前用户目录，不要求管理员权限；缺少 Microsoft WebView2 时安装程序会下载运行时，因此首次安装可能需要联网。
 4. 从开始菜单打开 Git View，点击顶部打开仓库按钮选择本地仓库，或展开“手动输入路径”填入仓库的完整路径。
 
-Windows 桌面应用支持查看和预览确认后的暂存、取消暂存、提交、创建和切换本地分支。写入使用安装包内的原生组件；仅使用 Node CLI 不提供 Windows 写入。Git 内置 CRLF/text/eol 转换受支持；外部过滤器、ident、working-tree-encoding 和未启用符号链接的含符号链接仓库仍会拒绝暂存。浏览器 HTTP 备用入口暂不支持 Windows，请使用桌面应用。
+Windows 桌面应用支持查看和预览确认后的暂存、取消暂存、提交、创建和切换本地分支。写入使用安装包内的原生组件；仅使用 Node CLI 不提供 Windows 写入。Git 内置 CRLF/text/eol 转换受支持；外部过滤器、ident、working-tree-encoding 和未启用符号链接的含符号链接仓库仍会拒绝写入。浏览器 HTTP 备用入口暂不支持 Windows，请使用桌面应用。
 
 当前 EXE 未做代码签名，Windows 可能显示未知发布者或 SmartScreen 提示。仅在核对 GitHub 下载来源和哈希后使用系统提供的“更多信息 → 仍要运行”入口，不要关闭 SmartScreen。若设备的组织策略禁止未知发布者，需要遵循该设备的策略。
 

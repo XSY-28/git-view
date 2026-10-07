@@ -13,7 +13,8 @@ export function runPlumbing(repository: RepositoryIdentity, args: string[], opti
     || (args.length === 5 && exact(['ls-tree', '-r', '-z', '--full-tree', args[4]!]) && /^(?:[a-f0-9]{40}|[a-f0-9]{64})$/.test(args[4]!))
     || [false, true].some((cached) => ['filter', 'all'].some((selection) => exact(['check-attr', '-z', ...(cached ? ['--cached'] : []), '--stdin', ...(selection === 'filter' ? ['filter'] : ['filter', 'text', 'eol', 'ident', 'working-tree-encoding'])])))
     || exact(['hash-object', '-w', '--stdin', '--no-filters'])
-    || (args.length === 4 && exact(['hash-object', '-w', '--stdin', args[3]!]) && args[3]!.startsWith('--path=') && !args[3]!.includes('\0'))
+    || (Boolean(options.normalization) && args.length === 4 && exact(['add', '--force', '--', args[3]!]))
+    || (Boolean(options.normalization) && args.length === 5 && exact(['ls-files', '--stage', '-z', '--', args[4]!]))
     || exact(['update-index', '--add', '--remove', '-z', '--index-info']);
   if (!allowed || (args[0] === 'update-index' && !options.index)) throw new QueryError('INTERNAL_ERROR', '拒绝未授权的 Git 写入命令。');
   if (options.signal?.aborted) return Promise.reject(new QueryError('CANCELLED', '操作已取消。'));

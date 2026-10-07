@@ -253,10 +253,16 @@ export function createGitWriteAdapter() {
         temporary = await mkdtemp(path.join(tmpdir(), 'git-view-index-'));
         const alternate = path.join(temporary, 'index');
         const canonicalDir = path.join(temporary, 'canonical');
+        const canonicalWork = path.join(temporary, 'worktree');
+        await mkdir(canonicalWork);
+        await mkdir(path.join(canonicalDir, 'info'), { recursive: true });
         await mkdir(path.join(canonicalDir, 'objects'), { recursive: true });
         await mkdir(path.join(canonicalDir, 'refs'));
         await writeFile(path.join(canonicalDir, 'HEAD'), 'ref: refs/heads/main\n');
-        if (state.index) await writeFile(alternate, state.index, { mode: 0o600 });
+        if (state.index) {
+          await writeFile(alternate, state.index, { mode: 0o600 });
+          await writeFile(path.join(canonicalDir, 'index'), state.index, { mode: 0o600 });
+        }
         const oidLength = state.headOid?.length ?? state.indexEntries[0]?.oid.length ?? ((await runPlumbing(repository, ['rev-parse', '--show-object-format'])).toString().trim() === 'sha256' ? 64 : 40);
         const zero = '0'.repeat(oidLength);
         const updates: string[] = [];
@@ -276,8 +282,21 @@ export function createGitWriteAdapter() {
             if (!['false', 'true', 'input', '0', '1', 'yes', 'no', 'on', 'off'].includes(conversion.autocrlf.toLowerCase()) || !['false', 'true', 'warn', '0', '1', 'yes', 'no', 'on', 'off'].includes(conversion.safecrlf.toLowerCase()) || !['native', 'lf', 'crlf'].includes(conversion.eol.toLowerCase())) fail('不支持此换行配置值。');
             const objectFormat = oidLength === 64 ? 'sha256' : 'sha1';
             await writeFile(path.join(canonicalDir, 'config'), `[core]\nrepositoryformatversion = ${objectFormat === 'sha256' ? 1 : 0}\nbare = false\nautocrlf = ${conversion.autocrlf}\nsafecrlf = ${conversion.safecrlf}\neol = ${conversion.eol}\n${objectFormat === 'sha256' ? '[extensions]\nobjectformat = sha256\n' : ''}`);
-            await writeFile(path.join(canonicalDir, '.gitattributes'), `* ${settings.text === 'unset' ? '-text' : settings.text === 'set' ? 'text' : settings.text === 'auto' ? 'text=auto' : '!text'} ${['lf', 'crlf'].includes(settings.eol) ? `eol=${settings.eol}` : '!eol'}\n`);
-            const oid = (await runPlumbing(repository, file.snapshot.kind === 'symlink' ? ['hash-object', '-w', '--stdin', '--no-filters'] : ['hash-object', '-w', '--stdin', `--path=${name}`], { input: file.bytes, ...(file.snapshot.kind === 'symlink' ? {} : { normalization: { gitDir: canonicalDir, worktree: canonicalDir } }) })).toString('ascii').trim();
+            await writeFile(path.join(canonicalDir, 'info', 'attributes'), `* ${settings.text === 'unset' ? '-text' : settings.text === 'set' ? 'text' : settings.text === 'auto' ? 'text=auto' : '!text'} ${['lf', 'crlf'].includes(settings.eol) ? `eol=${settings.eol}` : '!eol'} !filter !ident !working-tree-encoding\n`);
+            let oid: string;
+            if (file.snapshot.kind === 'symlink') oid = (await runPlumbing(repository, ['hash-object', '-w', '--stdin', '--no-filters'], { input: file.bytes })).toString('ascii').trim();
+            else {
+              // Ordinary Git add consults the original index before autocrlf/text=auto
+              // conversion (e.g. legacy CRLF blobs). Keep that behavior in isolation.
+              const selectedFile = path.join(canonicalWork, name);
+              await mkdir(path.dirname(selectedFile), { recursive: true });
+              await writeFile(selectedFile, file.bytes!);
+              const normalization = { gitDir: canonicalDir, worktree: canonicalWork };
+              await runPlumbing(repository, ['add', '--force', '--', name], { normalization });
+              const entry = parseEntries(await runPlumbing(repository, ['ls-files', '--stage', '-z', '--', name], { normalization })).find(entry => entry.path === name);
+              if (!entry) throw new QueryError('INTERNAL_ERROR', '隔离转换未生成所选文件。');
+              oid = entry.oid;
+            }
             const prior = state.indexEntries.find((entry) => entry.path === name);
             const mode = file.snapshot.kind === 'symlink' ? '120000' : !state.filemode ? (prior?.mode.startsWith('100') ? prior.mode : '100644') : file.snapshot.mode & 0o100 ? '100755' : '100644';
             updates.push(`${mode} ${oid}\t${name}\0`);

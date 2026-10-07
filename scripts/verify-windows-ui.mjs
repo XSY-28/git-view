@@ -1,0 +1,107 @@
+import assert from 'node:assert/strict';
+import { execFile, spawn } from 'node:child_process';
+import { createHash } from 'node:crypto';
+import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
+import { createServer } from 'node:net';
+import { tmpdir } from 'node:os';
+import { join, resolve } from 'node:path';
+import { promisify } from 'node:util';
+import { setTimeout as wait } from 'node:timers/promises';
+import { chromium, expect } from '@playwright/test';
+
+// Drive the actual installed WebView2 window; no HTTP fallback or mocked IPC.
+if (process.platform !== 'win32') throw new Error('Native UI verification must run on Windows.');
+const executable = resolve(process.argv[2] || '');
+const output = resolve('dist/installers');
+const temporary = await mkdtemp(join(tmpdir(), 'git-view-native-ui-'));
+const fixture = join(temporary, '中文 仓库');
+const exec = promisify(execFile);
+const env = { ...process.env, GIT_VIEW_HOME: join(temporary, 'state'), GIT_CONFIG_NOSYSTEM: '1', GIT_CONFIG_GLOBAL: 'NUL' };
+for (const name of Object.keys(env)) if (name.startsWith('GIT_') && !['GIT_VIEW_HOME', 'GIT_CONFIG_NOSYSTEM', 'GIT_CONFIG_GLOBAL'].includes(name)) delete env[name];
+let child; let browser; let exited;
+const report = { platform: process.platform, arch: process.arch, executable, checks: {}, environment: 'GitHub Windows runner; installed release WebView2 window', physicalWindows10Or11: 'unverified' };
+try {
+  await mkdir(output, { recursive: true });
+  await mkdir(fixture);
+  const git = (...args) => exec('git', ['-C', fixture, ...args], { env });
+  await git('init', '-b', 'main');
+  await writeFile(join(fixture, '中文 文件.txt'), 'version one\n');
+  await git('add', '--', '中文 文件.txt');
+  await git('-c', 'user.name=Installer Test', '-c', 'user.email=test@example.invalid', 'commit', '-m', 'native fixture commit');
+  await writeFile(join(fixture, '中文 文件.txt'), 'version two staged\n');
+  await git('add', '--', '中文 文件.txt');
+  await writeFile(join(fixture, '中文 文件.txt'), 'version three working\n');
+  await writeFile(join(fixture, '未跟踪.txt'), 'untracked content\n');
+  const fingerprint = async () => {
+    const hash = createHash('sha256');
+    const walk = async path => {
+      for (const item of (await readdir(path, { withFileTypes: true })).sort((a, b) => a.name.localeCompare(b.name))) {
+        const file = join(path, item.name); hash.update(file.slice(fixture.length));
+        if (item.isDirectory()) await walk(file); else hash.update(await readFile(file));
+      }
+    };
+    await walk(fixture); return hash.digest('hex');
+  };
+  const before = await fingerprint();
+  const server = createServer();
+  await new Promise(resolveListen => server.listen(0, '127.0.0.1', resolveListen));
+  const port = server.address().port;
+  await new Promise(resolveClose => server.close(resolveClose));
+  // This debugging endpoint exists only in the disposable CI process.
+  child = spawn(executable, [], { env: { ...env, WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS: `--remote-debugging-port=${port} --remote-debugging-address=127.0.0.1`, WEBVIEW2_USER_DATA_FOLDER: join(temporary, 'webview') }, stdio: ['ignore', 'pipe', 'pipe'] });
+  let diagnostic = '';
+  child.stdout.on('data', chunk => { diagnostic += chunk; });
+  child.stderr.on('data', chunk => { diagnostic += chunk; });
+  exited = new Promise((resolveExit, reject) => { child.once('exit', (code, signal) => resolveExit({ code, signal })); child.once('error', reject); });
+  await expect.poll(async () => {
+    if (child.exitCode !== null) throw new Error(`Native app exited before WebView initialization: ${diagnostic}`);
+    return fetch(`http://127.0.0.1:${port}/json/version`).then(result => result.ok, () => false);
+  }, { timeout: 60_000, message: 'Installed WebView2 must expose its real window' }).toBe(true);
+  browser = await chromium.connectOverCDP(`http://127.0.0.1:${port}`);
+  await expect.poll(() => browser.contexts().flatMap(context => context.pages()).length, { timeout: 30_000 }).toBeGreaterThan(0);
+  const page = browser.contexts().flatMap(context => context.pages())[0];
+  const errors = []; page.on('pageerror', error => errors.push(error.message));
+  await expect(page.locator('.repository-switcher-trigger')).toBeEnabled({ timeout: 30_000 });
+  assert.equal(await page.evaluate(() => typeof window.__TAURI__?.core?.invoke), 'function');
+  report.checks.realTauriIpcAndWebView2 = true;
+  await page.locator('.repository-switcher-trigger').click();
+  await page.locator('.repository-switcher-manual summary').click();
+  await page.locator('#repo-path').fill(fixture);
+  await page.locator('.repository-switcher-manual button').click();
+  await expect(page.locator('.group-staged .file-row').filter({ hasText: '中文 文件.txt' })).toBeVisible({ timeout: 30_000 });
+  report.checks.manualOpenUnicodeRepository = true;
+  await page.locator('.group-staged .file-row').filter({ hasText: '中文 文件.txt' }).click();
+  await expect(page.getByTestId('diff-scroll')).toContainText('+version two staged');
+  await expect(page.getByTestId('diff-scroll')).toContainText('-version one');
+  report.checks.stagedDiff = true;
+  await page.locator('.group-unstaged .file-row').filter({ hasText: '中文 文件.txt' }).click();
+  await expect(page.getByTestId('diff-scroll')).toContainText('+version three working');
+  await expect(page.getByTestId('diff-scroll')).toContainText('-version two staged');
+  report.checks.unstagedDiff = true;
+  await page.screenshot({ path: join(output, 'windows-native-changes.png') });
+  await page.getByRole('navigation', { name: /^(Main view|主视图)$/ }).getByRole('button', { name: /^(History|历史)$/ }).click();
+  await page.getByTestId('commit-row').filter({ hasText: 'native fixture commit' }).click();
+  await expect(page.getByTestId('diff-scroll')).toContainText('+version one');
+  report.checks.historyAndCommitDiff = true;
+  await page.screenshot({ path: join(output, 'windows-native-history.png') });
+  assert.deepEqual(errors, []);
+  report.checks.noRendererErrors = true;
+  assert.equal(await fingerprint(), before);
+  report.checks.repositoryFingerprintUnchanged = true;
+  const nodes = JSON.parse((await exec('powershell.exe', ['-NoProfile', '-Command', `ConvertTo-Json -Compress -InputObject @(Get-CimInstance Win32_Process -Filter "ParentProcessId = ${child.pid}" | Where-Object Name -eq 'node.exe' | Select-Object -ExpandProperty ProcessId)`])).stdout);
+  assert.ok(nodes.length > 0, 'The real packaged Node sidecar must be running.');
+  await exec('powershell.exe', ['-NoProfile', '-Command', `$p = Get-Process -Id ${child.pid}; if (-not $p.CloseMainWindow()) { throw 'Native window did not accept close' }`]);
+  const result = await Promise.race([exited, wait(15_000).then(() => { throw new Error('Native host did not exit after window close.'); })]);
+  assert.equal(result.code, 0);
+  await expect.poll(async () => (await exec('powershell.exe', ['-NoProfile', '-Command', `@(Get-Process -Id ${nodes.join(',')} -ErrorAction SilentlyContinue).Count`])).stdout.trim(), { timeout: 15_000 }).toBe('0');
+  report.checks.normalWindowCloseAndSidecarCleanup = true;
+  await writeFile(join(output, 'windows-native-verification.json'), `${JSON.stringify(report, null, 2)}\n`);
+  console.log('Installed Windows window, repository opening, staged/unstaged diff, history and normal exit passed.');
+} catch (error) {
+  if (browser) for (const page of browser.contexts().flatMap(context => context.pages())) await page.screenshot({ path: join(output, 'windows-native-failure.png') }).catch(() => {});
+  throw error;
+} finally {
+  await browser?.close().catch(() => {});
+  if (child && child.exitCode === null) { await exec('taskkill.exe', ['/PID', String(child.pid), '/T', '/F']).catch(() => {}); await exited.catch(() => {}); }
+  await rm(temporary, { recursive: true, force: true, maxRetries: 10, retryDelay: 500 });
+}

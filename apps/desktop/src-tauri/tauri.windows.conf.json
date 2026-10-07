@@ -1,3 +1,12 @@
 {
-  "bundle": { "targets": ["nsis"] }
+  "bundle": {
+    "targets": ["nsis"],
+    "windows": {
+      "nsis": {
+        "installMode": "currentUser",
+        "languages": ["English", "SimpChinese"],
+        "displayLanguageSelector": true
+      }
+    }
+  }
 }

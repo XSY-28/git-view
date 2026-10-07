@@ -15,6 +15,6 @@
     "icon": ["icons/icon.png", "icons/icon.icns", "icons/icon.ico"],
     "targets": ["app"],
     "resources": { "resources/runtime/": "runtime/", "resources/app/": "app/" },
-    "macOS": { "minimumSystemVersion": "12.0" }
+    "macOS": { "minimumSystemVersion": "13.5" }
   }
 }

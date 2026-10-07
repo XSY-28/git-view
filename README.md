@@ -86,7 +86,7 @@ open "$HOME/Applications/Git View.app"
 
 ## 支持范围
 
-macOS Apple silicon 已有桌面实机验证。Windows 暂时仅开放查看，源码与桌面宿主由 CI 检查，安装和原生界面尚未实机验证。
+macOS Apple silicon 已有桌面实机验证。Windows 暂时仅开放查看，已通过 Windows CI 中的实际安装、原生窗口差异与历史走查、正常退出和卸载验证；Windows 10/11 实体电脑尚未复测。详见[安装包验收记录](docs/verification/2026-10-07-desktop-installers.md)。
 
 - 暂不提供 push、merge、rebase 或历史重写。远程跟踪引用来自本地仓库，不会自动获取远端更新。
 - 暂存按整个文件操作，不支持选择差异行或片段。写入限常规仓库和 index；冲突、进行中的 Git 操作、submodule、特殊 index 或外部内容过滤器会被拒绝。暂不支持 `text`、`eol`、`ident`、`working-tree-encoding` 和 autocrlf 转换。

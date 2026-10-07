@@ -102,8 +102,10 @@ describe('immutable history investigation', () => {
     await expect(createGitAdapter({ limits: { maxOutputBytes: 10 } }).listRecords(binaryRepo, { kind: 'reflog' })).rejects.toMatchObject({ code: 'OUTPUT_LIMIT' });
     await expect(adapter.searchCommits(binaryRepo, { scope: 'all', field: 'subject', term: 'fixture' }, AbortSignal.abort())).rejects.toMatchObject({ code: 'CANCELLED' });
   });
-  it('keeps literal control-character paths and reads the surviving side of deletions', async () => {
-    const root = repository(); const file = ' 空格\t换行\n中文 🌱 [*].txt '; fixtureGit(root, ['config', 'core.quotePath', 'false']); write(root, file, 'first\n'); const initial = commit(root, 'literal file'); write(root, file, 'second\n'); const edited = commit(root, 'edit literal file'); fixtureGit(root, ['rm', '--', file]); const deleted = commit(root, 'delete literal file');
+  // Windows cannot create control-character, wildcard or trailing-space names.
+  // Keep its legal special-name case on every platform, plus the POSIX case.
+  it.each(['- 空格 中文 🌱 [x].txt', ...(process.platform === 'win32' ? [] : [' 空格\t换行\n中文 🌱 [*].txt '])])('keeps literal path %j and reads the surviving side of deletions', async file => {
+    const root = repository(); fixtureGit(root, ['config', 'core.quotePath', 'false']); write(root, file, 'first\n'); const initial = commit(root, 'literal file'); write(root, file, 'second\n'); const edited = commit(root, 'edit literal file'); fixtureGit(root, ['rm', '--', file]); const deleted = commit(root, 'delete literal file');
     const adapter = createGitAdapter(); const repo = await adapter.resolveRepository(root); const before = fingerprint(root);
     const history = await adapter.listFileHistory(repo, { endpoint: head, path: file }); expect(history.entries.map(item => item.commit.oid)).toEqual([deleted, edited, initial]);
     const removed = history.entries[0]!; expect(removed.change.kind).toBe('D'); expect((await adapter.readFileHistoryChange(repo, history.snapshotId, removed.entryId)).text).toContain('-second');

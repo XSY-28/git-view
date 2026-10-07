@@ -42,7 +42,7 @@ test('discarded pages and repository switches cannot mix observations; each work
   });
   await page.getByRole('button', { name: '比较', exact: true }).click(); await pending;
   await page.locator('.repository-switcher-trigger').click(); await page.getByText('手动输入路径', { exact: true }).click(); await page.getByLabel('本地仓库路径').fill(other); await page.getByRole('button', { name: '按路径打开', exact: true }).click();
-  await expect(page.locator('.navigation-ref')).toHaveCount(1); await page.getByRole('button', { name: '版本比较', exact: true }).click(); await page.getByRole('button', { name: '比较', exact: true }).click();
+  await expect(page.locator('.repository-title h1')).toHaveText(other.split('/').at(-1)!); await page.getByRole('button', { name: '版本比较', exact: true }).click(); await page.getByRole('button', { name: '比较', exact: true }).click();
   await expect(page.locator('.comparison-content-tabs')).toContainText('A 独有提交 0'); releaseComparison(); await page.waitForTimeout(100);
   await expect(page.locator('.comparison-fixed-endpoints')).not.toContainText(b.slice(0, 10));
   await page.locator('.repository-switcher-trigger').click(); await page.locator('.navigation-recent').filter({ hasText: root }).click();
@@ -54,7 +54,7 @@ async function open(page: Page) {
   const id = (await call({ action: 'open', path: root })).sessionId;
   const ticket = await call({ action: 'ticket', sessionId: id });
   await page.goto(`${server.origin}/?session=${id}#ticket=${ticket.ticket}`);
-  await expect(page.locator('.navigation-ref')).toHaveCount(2);
+  await expect(page.locator('.repository-title h1')).toHaveText(root.split('/').at(-1)!);
   await page.getByRole('button', { name: '版本比较', exact: true }).click();
   await page.getByLabel('比较端点 A').selectOption('refs/heads/main');
   await page.getByLabel('比较端点 B').selectOption('refs/heads/topic');

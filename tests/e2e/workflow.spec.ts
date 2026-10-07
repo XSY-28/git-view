@@ -55,7 +55,7 @@ test('real partial staging, history, refresh and tool layout', async ({ page }) 
   await expect(page.locator('.code-scroll').getByText('+version three working', { exact: false })).toBeVisible();
   await expect(page.locator('.code-scroll').getByText('-version two staged', { exact: false })).toBeVisible();
   await expect(page.locator('.diff-baseline')).toContainText(/暂存区\s*→\s*工作区/);
-  await page.getByRole('button', { name: /提交历史/ }).first().click();
+  await page.getByRole('navigation', { name: '主视图', exact: true }).getByRole('button', { name: '历史', exact: true }).click();
   await expect(page.getByRole('button').filter({ hasText: '首次提交' }).first()).toBeVisible();
   await page.getByRole('button').filter({ hasText: '首次提交' }).first().click();
   await page.locator('.commit-metadata summary').click();
@@ -89,10 +89,14 @@ test('real partial staging, history, refresh and tool layout', async ({ page }) 
   await expect(page.locator('.code-scroll')).toHaveCount(0);
   await page.setViewportSize({ width: 390, height: 844 });
   const panels = page.getByRole('navigation', { name: '窄窗口面板' });
-  await expect(panels.getByRole('button')).toHaveText(['历史范围', '文件列表', '查看详情']);
+  await expect(panels.getByRole('button')).toHaveText(['文件列表', '查看详情']);
+  await expect(page.getByRole('complementary', { name: '历史范围', exact: true })).toHaveCount(0);
+  await page.getByRole('navigation', { name: '主视图', exact: true }).getByRole('button', { name: '历史', exact: true }).click();
+  await expect(panels.getByRole('button')).toHaveText(['历史范围', '提交列表', '查看详情']);
   await panels.getByRole('button', { name: '历史范围', exact: true }).click();
   await expect(page.getByRole('complementary', { name: '历史范围' })).toBeVisible();
   await expect(page.locator('.workspace')).toBeHidden();
+  await page.getByRole('navigation', { name: '主视图', exact: true }).getByRole('button', { name: /^当前改动/ }).click();
   await panels.getByRole('button', { name: '文件列表' }).click();
   await page.locator('.group-staged .file-row').filter({ hasText: 'hello.txt' }).click();
   await expect(page.locator('.code-scroll').getByText('+version two staged', { exact: false })).toBeVisible();

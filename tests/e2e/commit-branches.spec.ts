@@ -54,7 +54,7 @@ test('ordinary commit previews staged V2, retains V3, refreshes history and show
   const oid = git('rev-parse', 'HEAD'); expect(oid).not.toBe(before); expect(git('rev-parse', 'HEAD^')).toBe(before);
   expect(git('show', 'HEAD:file.txt')).toBe('V2 staged'); expect(await readFile(join(repo, 'file.txt'), 'utf8')).toBe('V3 working\n');
   await expect(page.locator('.operation-feedback')).toContainText(oid); await expect(page.locator('.operation-feedback')).toContainText('未暂存 1');
-  await page.getByRole('button', { name: /提交历史/ }).first().click(); await expect(page.locator('.commit-row').first()).toContainText('UI commit');
+  await page.getByRole('navigation', { name: '主视图', exact: true }).getByRole('button', { name: '历史', exact: true }).click(); await expect(page.locator('.commit-row').first()).toContainText('UI commit');
 });
 
 test('branch creation does not switch; a separate clean switch updates files and HEAD', async ({ page }) => {
@@ -64,7 +64,7 @@ test('branch creation does not switch; a separate clean switch updates files and
   await expect(page.getByRole('dialog', { name: '确认创建分支', exact: true })).toContainText('topic/ui');
   await confirm(page, '确认创建分支'); await expect(page.locator('.operation-feedback')).toContainText('创建分支完成');
   expect(git('symbolic-ref', '--short', 'HEAD')).toBe('main'); expect(git('rev-parse', 'topic/ui')).toBe(git('rev-parse', 'main'));
-  await page.getByRole('button', { name: /提交历史/ }).first().click();
+  await page.getByRole('navigation', { name: '主视图', exact: true }).getByRole('button', { name: '历史', exact: true }).click();
   await page.locator('.commit-row').first().click();
   await expect(page.locator('.commit-row[aria-pressed="true"]')).toHaveCount(1);
   await page.getByRole('button', { name: '分支操作', exact: true }).click(); form = page.getByRole('dialog', { name: '分支操作', exact: true });
@@ -73,7 +73,7 @@ test('branch creation does not switch; a separate clean switch updates files and
   await confirm(page, '确认切换分支'); await expect(page.locator('.operation-feedback')).toContainText('切换分支完成');
   await expect(page.getByRole('button', { name: '分支操作', exact: true })).toHaveText('existing'); expect(await readFile(join(repo, 'file.txt'), 'utf8')).toBe('other branch\n');
   await expect(page.getByRole('heading', { name: '工作区干净', exact: true })).toBeVisible();
-  await page.getByRole('button', { name: /提交历史/ }).first().click();
+  await page.getByRole('navigation', { name: '主视图', exact: true }).getByRole('button', { name: '历史', exact: true }).click();
   await expect(page.locator('.commit-row').first()).toContainText('existing branch version');
   await expect(page.locator('.commit-row[aria-pressed="true"]')).toHaveCount(0);
   await writeFile(join(repo, 'file.txt'), 'external change after switching\n');

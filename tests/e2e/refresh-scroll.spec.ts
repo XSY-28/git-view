@@ -73,11 +73,13 @@ async function moveDown(page: Page, top: number, left: number, pageDelta = 0) {
 
 for (const view of ['changes', 'history'] as const) {
   test(`${view}: focus/manual refresh retain live scroll and disclosure state; failed refresh and file changes remain correct`, async ({ page }) => {
-    await page.setViewportSize({ width: 1180, height: 760 });
+    // Keep a real document-scroll range after the diff toolbar is compacted;
+    // the long diff still has its own independent vertical/horizontal scroll.
+    await page.setViewportSize({ width: 1180, height: 560 });
     const ticket = await call({ action: 'ticket', sessionId });
     await page.goto(`${origin}/?session=${sessionId}#ticket=${ticket.ticket}`);
     if (view === 'history') {
-      await page.getByRole('button', { name: /提交历史/ }).first().click();
+      await page.getByRole('navigation', { name: '主视图', exact: true }).getByRole('button', { name: '历史', exact: true }).click();
       await page.locator('.commit-row').first().click();
     }
     await expect(page.locator('.diff-header h2')).toHaveText('a.txt');

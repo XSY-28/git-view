@@ -133,7 +133,7 @@ test('narrow keyboard selection and preview are accessible; commit history has n
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   await page.screenshot({ path: 'test-results/operation-preview-narrow.png', fullPage: true });
   await page.keyboard.press('Escape'); await expect(dialog).not.toBeVisible(); await expect(action).toBeFocused();
-  await page.getByRole('button', { name: /提交历史/ }).first().click(); await page.locator('.commit-row').first().click();
+  await page.getByRole('navigation', { name: '主视图', exact: true }).getByRole('button', { name: '历史', exact: true }).click(); await page.locator('.commit-row').first().click();
   await expect(page.locator('.change-list-history')).toBeVisible();
   await expect(page.locator('.change-list-history input[type=checkbox]')).toHaveCount(0);
 });

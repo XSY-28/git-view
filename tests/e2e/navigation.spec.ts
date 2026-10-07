@@ -30,6 +30,7 @@ test('reference filters are read-only; changes selection and linked worktree con
   const index = await readFile(join(repo, '.git/index')); const head = git('rev-parse', 'HEAD');
   const ticket = await call({ action: 'ticket', sessionId }); await page.goto(`${origin}/?session=${sessionId}#ticket=${ticket.ticket}`);
   await page.locator('.group-unstaged .file-row').click(); await expect(page.locator('.code-scroll')).toContainText('+V3 working');
+  await page.getByRole('navigation', { name: '主视图', exact: true }).getByRole('button', { name: '历史', exact: true }).click();
   await page.locator('.navigation-ref').filter({ hasText: /^(?:● )?main/ }).click();
   await expect(page.locator('.commit-row')).toHaveCount(1); await expect(page.locator('.commit-row')).toContainText('main first');
   await page.locator('.navigation-ref').filter({ hasText: /^side/ }).click();
@@ -38,12 +39,12 @@ test('reference filters are read-only; changes selection and linked worktree con
   await expect(page.locator('.navigation-ref').filter({ hasText: /^side/ })).not.toContainText('当前分支');
   await expect(page.getByRole('button', { name: '分支操作', exact: true })).toHaveText('main');
   await expect(page.locator('.commit-row').filter({ hasText: 'side history 210' })).toBeVisible();
-  await expect(page.getByRole('button', { name: /提交历史/ }).first()).toContainText('200');
-  await page.getByRole('button', { name: /继续加载 200 条/ }).click(); await expect(page.getByRole('button', { name: /提交历史/ }).first()).toContainText('212');
+  await expect(page.locator('.history-loaded-count')).toHaveText('已加载 200 条提交');
+  await page.getByRole('button', { name: /继续加载 200 条/ }).click(); await expect(page.locator('.history-loaded-count')).toHaveText('已加载 212 条提交');
   await page.locator('.history-scroll').evaluate(node => { node.scrollTop = 600; }); await page.waitForTimeout(100);
   await page.locator('.commit-row[data-row="12"]').click(); await expect(page.locator('.commit-detail')).toContainText('side history 198');
   await page.getByRole('button', { name: /当前改动/ }).first().click(); await expect(page.locator('.group-unstaged .file-row')).toHaveAttribute('aria-pressed', 'true'); await expect(page.locator('.code-scroll')).toContainText('+V3 working');
-  await page.getByRole('button', { name: /提交历史/ }).first().click(); await expect(page.locator('.commit-row[data-row="12"]')).toHaveAttribute('aria-pressed', 'true'); expect(await page.locator('.history-scroll').evaluate(node => node.scrollTop)).toBe(600);
+  await page.getByRole('navigation', { name: '主视图', exact: true }).getByRole('button', { name: '历史', exact: true }).click(); await expect(page.locator('.commit-row[data-row="12"]')).toHaveAttribute('aria-pressed', 'true'); expect(await page.locator('.history-scroll').evaluate(node => node.scrollTop)).toBe(600);
   await page.locator('.navigation-ref').filter({ hasText: /^(?:● )?main/ }).click(); await expect(page.locator('.commit-row')).toHaveCount(1); await expect(page.locator('.commit-row')).toContainText('main first');
   await page.getByRole('button', { name: /当前改动/ }).first().click();
   expect(git('rev-parse', 'HEAD')).toBe(head); expect(await readFile(join(repo, '.git/index'))).toEqual(index);
@@ -53,6 +54,7 @@ test('reference filters are read-only; changes selection and linked worktree con
   await page.getByRole('button', { name: '切换仓库：关联 工作区', exact: true }).click();
   await page.getByRole('dialog', { name: '切换仓库', exact: true }).locator('.navigation-worktree').filter({ hasText: '主 仓库' }).click();
   await expect(page.locator('.repository-title h1')).toHaveText('主 仓库'); await expect(page.locator('.group-unstaged .file-row')).toHaveAttribute('aria-pressed', 'true'); await expect(page.locator('.code-scroll')).toContainText('+V3 working');
+  await page.getByRole('navigation', { name: '主视图', exact: true }).getByRole('button', { name: '历史', exact: true }).click();
   await page.setViewportSize({ width: 390, height: 844 }); await page.getByRole('button', { name: '历史范围', exact: true }).click(); await expect(page.getByLabel('筛选引用')).toBeVisible();
   await page.getByLabel('筛选引用').fill('start'); await expect(page.locator('.navigation-ref')).toHaveCount(1); await page.locator('.navigation-ref').focus(); await page.keyboard.press('Enter');
   await expect(page.locator('.commit-row')).toHaveCount(1); expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
@@ -176,8 +178,8 @@ test('returning to the in-flight desktop path clears an older queued path', asyn
 test('background history refresh keeps list geometry, scroll and click targets until the replacement arrives', async ({ page }) => {
   let pause = false; const history = deferred(); const overview = deferred(); const actions = await raceFixture(page, { initial: true, overview: () => pause ? overview.promise : Promise.resolve(), history: () => pause ? history.promise : Promise.resolve() });
   await expect(page.locator('.code-scroll')).toContainText('+V2');
-  await page.getByRole('button', { name: /提交历史/ }).first().click();
-  await expect(page.getByRole('button', { name: /提交历史/ }).first()).toContainText('30');
+  await page.getByRole('navigation', { name: '主视图', exact: true }).getByRole('button', { name: '历史', exact: true }).click();
+  await expect(page.locator('.history-loaded-count')).toHaveText('已加载 30 条提交');
   await page.locator('.history-scroll').evaluate(node => { node.scrollTop = 600; });
   const target = page.locator('.commit-row[data-row="12"]'); await expect(target).toBeVisible();
   const before = await target.boundingBox(); expect(before).not.toBeNull();
@@ -191,7 +193,7 @@ test('background history refresh keeps list geometry, scroll and click targets u
   await expect(page.getByRole('button', { name: '取消提交历史读取', exact: true })).toBeVisible();
   expect(await target.boundingBox()).toEqual(before);
   expect(await page.locator('.history-scroll').evaluate(node => node.scrollTop)).toBe(600);
-  await page.getByRole('button', { name: /提交历史/ }).first().evaluate(node => { if (!node.textContent?.includes('30')) throw new Error('History was emptied during refresh'); });
+  await expect(page.locator('.history-loaded-count')).toHaveText('已加载 30 条提交');
   await page.mouse.up(); await expect(target).toHaveAttribute('aria-pressed', 'true');
   history.resolve(); await expect(page.locator('.commit-detail')).toContainText('fixture commit 18');
   await expect(target).toHaveAttribute('aria-pressed', 'true'); expect(await page.locator('.history-scroll').evaluate(node => node.scrollTop)).toBe(600);

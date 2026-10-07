@@ -26,6 +26,7 @@ export function rememberPosition(key: string, top: number) {
 }
 export interface ViewMemory {
   view: MainView; scope: HistoryScope; ref?: string; allHistoryOrder: HistoryOrder; selection?: ChangeEntry | null; commit?: string; commitFile?: ChangeEntry | null;
+  historyView?: 'history' | 'investigation';
   scroll: Record<string, number>; search: string; fileFilters: Record<FileListScope, string>; comparison?: ComparisonOptions; investigation?: InvestigationMemory;
 }
 /** UI state belongs to a canonical worktree, never to a shared common Git directory. */

@@ -239,7 +239,7 @@ code {
   color: var(--accent)
 }
 
-.view-tabs>button.locate-button {
+.view-actions>button.locate-button {
   height: 29px;
   border: 1px solid var(--line);
   border-radius: 4px;
@@ -769,7 +769,8 @@ code {
 }
 
 .history-workspace {
-  grid-template-columns: minmax(350px,40%) minmax(350px,1fr)
+  grid-template-columns: minmax(350px,40%) minmax(350px,1fr);
+  min-height: 0
 }
 
 .history-chart {
@@ -777,7 +778,8 @@ code {
 }
 
 .history-scroll {
-  height: max(280px, calc(100vh - 205px));
+  /* Reserve the header, both history navigation rows, heading and list footer. */
+  height: max(280px, calc(100vh - 310px));
   min-height: 280px;
   overflow-x: hidden;
   overflow-y: auto;
@@ -1054,7 +1056,7 @@ code {
     font-size: 13px
   }
 
-  .view-tabs>button.locate-button {
+  .view-actions>button.locate-button {
     margin-left: auto;
     font-size: 12px;
     padding: 0 6px
@@ -1207,8 +1209,17 @@ code {
   }
 }
 
-/* Navigation stays outside each view,so selecting a ref cannot replace the worktree. */
+/* History scopes apply to the commit list; other views own their query operands. */
 .repository-layout { display: grid; grid-template-columns: 205px minmax(0, 1fr); align-items: stretch; }
+.repository-layout.without-history-scope { grid-template-columns: minmax(0, 1fr); }
+.view-navigation { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 12px; margin: 0 20px; border-bottom: 1px solid var(--line); }
+.view-navigation .view-tabs { flex: 1; margin: 0; border-bottom: 0; }
+.view-actions { display: flex; align-items: center; gap: 8px; }
+.view-actions>button { padding: 6px 8px; color: var(--accent); font-size: 12px; }
+.view-actions .history-open-details { padding: 5px 8px; }
+.history-pagination { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 6px; padding: 8px 16px; }
+.history-loaded-count { color: var(--muted); font-size: 11px; }
+.history-pagination .load-more { width: auto; padding: 5px 8px; }
 
 .repository-main { min-width: 0; }
 
@@ -1294,6 +1305,8 @@ code {
 @media(max-width:720px) {
 
   .repository-layout { display: block; }
+  .view-navigation { margin: 0 16px; gap: 0 8px; }
+  .view-actions .history-open-details { display: none; }
 
   .repository-sidebar { display: none; position: static; height: auto; max-height: none; margin: 0 16px; border: 1px solid var(--line); }
 

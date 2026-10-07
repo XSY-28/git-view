@@ -19,8 +19,8 @@ async function snapshot() { return Promise.all(['HEAD', 'index'].map(name => rea
 async function openHistory(page: Page) {
   const ticket = await call({ action: 'ticket', sessionId });
   await page.goto(`${origin}/?session=${encodeURIComponent(sessionId)}#ticket=${encodeURIComponent(ticket.ticket as string)}`);
-  await page.getByRole('button', { name: /提交历史/ }).first().click();
-  await expect(page.getByRole('button', { name: /提交历史/ }).first()).toContainText('200');
+  await page.getByRole('navigation', { name: '主视图', exact: true }).getByRole('button', { name: '历史', exact: true }).click();
+  await expect(page.locator('.history-loaded-count')).toHaveText('已加载 200 条提交');
   await expect(row(page, 0)).toContainText('layout commit 240');
 }
 async function scrollToRow(page: Page, index: number) {

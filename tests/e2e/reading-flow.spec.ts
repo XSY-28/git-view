@@ -132,7 +132,7 @@ test('text previews have one numbered column and wrapping without diff-only cont
   await page.getByLabel('自动折行').uncheck(); await expect(page.locator('.diff-view')).toHaveClass(/nowrap-lines/);
   await page.getByLabel('自动折行').check(); await expect(page.locator('.diff-view')).toHaveClass(/wrap-lines/);
   await page.screenshot({ path: 'test-results/round2-text-preview.png', fullPage: true });
-  await page.getByRole('button', { name: /提交历史/ }).first().click();
+  await page.getByRole('navigation', { name: '主视图', exact: true }).getByRole('button', { name: '历史', exact: true }).click();
   await page.locator('.commit-row').filter({ hasText: 'many changed files' }).click();
   await expect(page.locator('.split-labels')).toContainText('父提交');
   await expect(page.locator('.split-labels')).toContainText('所选提交');
@@ -191,7 +191,7 @@ test('filtering keeps typing focus, removes an excluded diff, and remembers filt
   await filter.fill('file-12');
   await expect(page.locator('.code-scroll')).toHaveCount(0);
   await row(page, '.group-unstaged', 'file-12.txt').click();
-  await page.getByRole('button', { name: /提交历史/ }).first().click();
+  await page.getByRole('navigation', { name: '主视图', exact: true }).getByRole('button', { name: '历史', exact: true }).click();
   await page.locator('.commit-row').filter({ hasText: 'many changed files' }).click();
   const commitFilter = page.getByLabel('筛选提交文件', { exact: true });
   await expect(commitFilter).toHaveValue(''); await commitFilter.fill('file-2');
@@ -216,7 +216,7 @@ test('filtering keeps typing focus, removes an excluded diff, and remembers filt
   await expect(filter).toHaveValue('file-12');
   await expect(row(page, '.group-unstaged', 'file-12.txt')).toHaveAttribute('aria-pressed', 'true');
   await expect(page.locator('.code-scroll')).toContainText('+working file-12.txt');
-  await page.getByRole('button', { name: /提交历史/ }).first().click();
+  await page.getByRole('navigation', { name: '主视图', exact: true }).getByRole('button', { name: '历史', exact: true }).click();
   await expect(commitFilter).toHaveValue('file-2');
   await expect(firstCommitFile).toHaveAttribute('aria-pressed', 'true');
 });
@@ -225,7 +225,7 @@ for (const view of ['changes', 'history'] as const) {
   test(`${view}: an excluded selection cannot be refilled by its delayed real Git response`, async ({ page }) => {
     await open(page);
     if (view === 'history') {
-      await page.getByRole('button', { name: /提交历史/ }).first().click();
+      await page.getByRole('navigation', { name: '主视图', exact: true }).getByRole('button', { name: '历史', exact: true }).click();
       await page.locator('.commit-row').filter({ hasText: 'many changed files' }).click();
     }
     const group = view === 'history' ? '.commit-files' : '.group-unstaged';

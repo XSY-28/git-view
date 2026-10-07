@@ -1,26 +1,41 @@
 .comparison-view { min-width: 0; }
-.comparison-form { display: grid; grid-template-columns: minmax(0,1fr) auto minmax(0,1fr) auto; align-items: start; gap: 12px; margin: 18px 28px 0; }
+.comparison-form { display: grid; grid-template-columns: minmax(0,1fr) auto minmax(0,1fr) auto; align-items: start; gap: 10px; margin: 10px 28px 0; }
 .comparison-endpoint { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .comparison-endpoint > label { color: var(--muted); font-size: 12px; }
 .comparison-endpoint-fields { display: flex; flex: 1; flex-wrap: wrap; min-width: 0; gap: 6px; }
 .comparison-endpoint select,.comparison-endpoint input { flex: 1; min-width: 0; width: 100%; height: 34px; padding: 5px 8px; border: 1px solid var(--line); border-radius: 5px; background: var(--paper); color: var(--ink); font: inherit; font-size: 12px; }
 .comparison-endpoint input { flex-basis: 100%; font-family: var(--mono); }
+.comparison-view .comparison-endpoint-fields { flex-wrap: nowrap; }
+.comparison-view .comparison-endpoint select { flex-basis: 0; }
+.comparison-view .comparison-endpoint input { flex: 1.5 1 0; }
 .comparison-swap { height: 34px; padding: 0 8px; font-size: 22px; color: var(--muted); }
 .comparison-submit { min-height: 34px; }
 .comparison-read { margin: 6px 28px 0; }
-.comparison-snapshot { margin: 6px 28px 12px; font-size: 12px; }
-.comparison-fixed-endpoints { display: flex; flex-wrap: wrap; gap: 8px 24px; }
-.comparison-fixed-endpoints > span { display: flex; gap: 8px; align-items: baseline; min-width: 0; }
-.comparison-fixed-endpoints > span > span { overflow-wrap: anywhere; }
-.comparison-snapshot code,.comparison-tree-direction code { font: 11px var(--mono); color: var(--muted); }
-.comparison-base { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px; margin-top: 8px; color: var(--muted); }
+.comparison-snapshot { margin: 5px 28px 6px; font-size: 11px; }
+.comparison-snapshot-summary { display: flex; flex-wrap: wrap; align-items: baseline; gap: 5px 16px; padding: 3px 0; cursor: pointer; list-style: none; }
+.comparison-snapshot-summary::-webkit-details-marker { display: none; }
+.comparison-fixed-endpoints { display: flex; flex-wrap: wrap; min-width: 0; gap: 5px 16px; }
+.comparison-fixed-endpoints > span { display: flex; gap: 6px; align-items: baseline; min-width: 0; max-width: 100%; }
+.comparison-fixed-endpoints > span > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.comparison-fixed-endpoints code { flex: none; }
+.comparison-snapshot code { font: 11px var(--mono); color: var(--muted); }
+.comparison-base { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px; color: var(--muted); }
+.comparison-details-label { margin-left: auto; color: var(--muted); font-size: 10px; white-space: nowrap; }
+.comparison-details-arrow { display: inline-block; }
+.comparison-resolved-details[open] .comparison-details-arrow { transform: rotate(90deg); }
+.comparison-full-endpoints { margin: 5px 0; padding: 6px 10px; background: var(--surface-subtle); }
+.comparison-full-endpoints > div { display: flex; flex-wrap: wrap; gap: 3px 12px; padding: 3px 0; }
+.comparison-full-endpoints dt { color: var(--muted); }
+.comparison-full-endpoints dd { display: flex; flex-wrap: wrap; min-width: 0; gap: 3px 10px; margin: 0; }
+.comparison-full-endpoints dd > * { min-width: 0; overflow-wrap: anywhere; }
 .comparison-limitation { color: var(--muted); margin: 4px 0 0; }
-.comparison-content-tabs,.comparison-modes { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 0 28px; border-bottom: 1px solid var(--line); }
-.comparison-content-tabs button,.comparison-modes button { padding: 9px 10px; color: var(--muted); font-size: 12px; }
+.comparison-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 0 16px; margin: 0 28px; border-bottom: 1px solid var(--line); }
+.comparison-content-tabs,.comparison-modes { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; min-width: 0; }
+.comparison-modes { margin-left: auto; }
+.comparison-content-tabs button,.comparison-modes button { padding: 7px 8px; color: var(--muted); font-size: 12px; }
 .comparison-content-tabs button[aria-pressed=true],.comparison-modes button[aria-pressed=true] { color: var(--ink); box-shadow: inset 0 -2px var(--accent); }
 .comparison-content-tabs button > span { margin-left: 4px; font: 11px var(--mono); }
-.comparison-tree-direction { margin-left: auto; font-size: 11px; color: var(--muted); }
-.repository-main .comparison-workspace { margin-top: 12px; }
+.repository-main .comparison-workspace { margin-top: 8px; }
 .comparison-workspace .filtered-commit-files { max-height: min(60vh,680px); }
 .comparison-history { margin: 12px 28px; }
 .comparison-history > div:has(.comparison-commit) { max-height: 65vh; overflow: auto; }
@@ -29,12 +44,12 @@
 .comparison-commit code,.comparison-commit small { color: var(--muted); font-size: 11px; }
 .comparison-commit > span { overflow-wrap: anywhere; }
 @media(max-width:780px) {
-  .comparison-form { grid-template-columns: minmax(0,1fr) auto; margin: 14px 16px 0; gap: 8px; }
+  .comparison-form { grid-template-columns: minmax(0,1fr) auto; margin: 8px 16px 0; gap: 7px; }
   .comparison-endpoint:nth-of-type(2) { grid-row: 2; }
   .comparison-submit { grid-column: 2; grid-row: 2; }
   .comparison-read,.comparison-snapshot,.comparison-history { margin-left: 16px; margin-right: 16px; }
-  .comparison-content-tabs,.comparison-modes { margin-left: 16px; margin-right: 16px; }
-  .comparison-tree-direction { flex-basis: 100%; padding: 6px 10px; }
+  .comparison-controls { margin-left: 16px; margin-right: 16px; gap: 0 10px; }
+  .comparison-modes { margin-left: 0; }
   .comparison-commit { grid-template-columns: 80px minmax(0,1fr); gap: 5px 8px; }
   .comparison-commit small { grid-column: 2; }
 }

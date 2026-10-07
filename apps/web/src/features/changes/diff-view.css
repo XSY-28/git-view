@@ -1,9 +1,25 @@
-.diff-view .diff-header { padding: 16px 24px; }
-.diff-view .diff-header h2 { margin: 0; min-width: 0; }
-.patch-metadata { margin: 0; padding: 10px 24px; border-bottom: 1px solid var(--line); font-size: 11px; }
-.patch-metadata > div { display: flex; gap: 12px; padding: 2px 0; }
+.diff-view .diff-header { flex-wrap: wrap; justify-content: flex-start; gap: 6px 12px; padding: 8px 16px; }
+.diff-view .diff-header h2 { flex: 1 1 120px; margin: 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.diff-view .diff-count { gap: 7px; font-size: 11px; }
+.diff-header-controls { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 10px; margin-left: auto; min-width: 0; max-width: 100%; }
+.diff-view .diff-file-actions { display: flex; align-items: center; margin: 0; }
+.diff-view .diff-toolbar { flex-wrap: wrap; min-width: 0; gap: 4px; padding: 0; border: 0; background: none; }
+.diff-view .diff-toolbar button { padding: 4px 7px; }
+.diff-view .diff-toolbar label { margin-left: 6px; }
+.diff-view .diff-baseline { gap: 5px 8px; padding: 5px 16px; }
+.diff-view .diff-baseline > span { min-width: 0; overflow-wrap: anywhere; }
+.diff-details-toggle { margin-left: auto; flex: none; padding: 2px 0 2px 6px; color: var(--muted); font-family: inherit; font-size: 10px; white-space: nowrap; }
+.diff-details-toggle:hover, .diff-details-toggle[aria-expanded="true"] { color: var(--ink); }
+.diff-object-details { margin: 0; padding: 8px 16px; border-bottom: 1px solid var(--line); font-size: 11px; }
+.diff-object-details[hidden] { display: none; }
+.diff-object-details > div { display: flex; flex-wrap: wrap; gap: 3px 12px; padding: 2px 0; }
+.diff-object-details dt { flex: 0 0 auto; color: var(--muted); }
+.diff-object-details dd { margin: 0; min-width: 0; overflow-wrap: anywhere; font-family: var(--mono); }
+.patch-metadata { display: flex; flex-wrap: wrap; gap: 4px 16px; margin: 0; padding: 5px 16px; border-bottom: 1px solid var(--line); font-size: 11px; }
+.patch-metadata > div { display: flex; gap: 8px; min-width: 0; }
 .patch-metadata dt { flex: 0 0 auto; color: var(--muted); }
 .patch-metadata dd { margin: 0; min-width: 0; overflow-wrap: anywhere; font-family: var(--mono); }
+.diff-view .code-scroll { padding-top: 6px; }
 .diff-view .code-line.note { color: var(--muted); }
 .diff-view .code-line.note code { font-size: 11px; }
 .diff-view .text-code-table .line-number { border-right: 1px solid var(--line); }
@@ -16,7 +32,10 @@
 .raw-patch-actions [role="status"] { color: var(--muted); }
 .raw-patch-content { margin: 0; padding: 12px 24px 20px; overflow: auto; max-height: 45vh; font: 11px/1.8 var(--mono); white-space: pre; scrollbar-width: thin; }
 @media (max-width: 600px) {
-  .diff-view .diff-header, .patch-metadata { padding: 12px 14px; }
+  .diff-view .diff-header { padding: 7px 12px; gap: 5px 8px; }
+  .diff-header-controls { gap: 5px 8px; }
+  .diff-view .diff-baseline { padding: 5px 12px; }
+  .patch-metadata, .diff-object-details { padding: 5px 12px; }
   .raw-patch > summary { padding: 12px 14px; }
   .raw-patch-actions { padding: 0 14px 10px; flex-wrap: wrap; }
   .raw-patch-content { padding: 12px 14px 20px; }

@@ -36,11 +36,11 @@ test.afterAll(async () => { if (origin) await call({ action: 'shutdown' }).catch
 test('history defaults to HEAD; locating it outside all refs and virtual pagination work', async ({ page }) => {
   const ticket = await call({ action: 'ticket', sessionId });
   await page.goto(`${origin}/?session=${encodeURIComponent(sessionId)}#ticket=${encodeURIComponent(ticket.ticket as string)}`);
-  await page.getByRole('button', { name: /提交历史/ }).first().click();
+  await page.getByRole('navigation', { name: '主视图', exact: true }).getByRole('button', { name: '历史', exact: true }).click();
   await expect(page.getByRole('button', { name: '当前 HEAD', exact: true })).toHaveAttribute('aria-pressed', 'true');
-  await expect(page.getByRole('button', { name: /提交历史/ }).first()).toContainText('1');
+  await expect(page.locator('.history-loaded-count')).toHaveText('已加载 1 条提交');
   await page.getByRole('button', { name: '全部引用', exact: true }).click();
-  await expect(page.getByRole('button', { name: /提交历史/ }).first()).toContainText('200');
+  await expect(page.locator('.history-loaded-count')).toHaveText('已加载 200 条提交');
   expect(await page.locator('.commit-row').count()).toBeLessThan(40);
   await page.getByRole('button', { name: /查看 HEAD 历史/ }).click();
   await expect(page.getByRole('button', { name: '当前 HEAD', exact: true })).toHaveAttribute('aria-pressed', 'true');
@@ -52,7 +52,7 @@ test('history defaults to HEAD; locating it outside all refs and virtual paginat
   await expect(page.getByRole('button', { name: /定位 HEAD/ })).toBeVisible();
   await expect(page.getByRole('button', { name: '分支操作', exact: true })).toHaveText('main');
   await page.getByRole('button', { name: '全部引用', exact: true }).click();
-  await expect(page.getByRole('button', { name: /提交历史/ }).first()).toContainText('200');
+  await expect(page.locator('.history-loaded-count')).toHaveText('已加载 200 条提交');
   const first = page.locator('.commit-row[data-row="0"]');
   await first.focus(); await first.press('End');
   const last = page.locator('.commit-row[data-row="199"]');
@@ -66,7 +66,7 @@ test('history defaults to HEAD; locating it outside all refs and virtual paginat
   await expect(first).toBeFocused(); await expect(first).toHaveAttribute('aria-pressed', 'true');
   await expect(first).toBeInViewport();
   await page.getByRole('button', { name: /继续加载 200 条/ }).click();
-  await expect(page.getByRole('button', { name: /提交历史/ }).first()).toContainText('231');
+  await expect(page.locator('.history-loaded-count')).toHaveText('已加载 231 条提交');
   await expect(page.getByRole('button', { name: /继续加载 200 条/ })).toHaveCount(0);
   expect(await page.locator('.commit-row').count()).toBeLessThan(40);
 });
@@ -76,8 +76,8 @@ test('locating HEAD runs once across refresh and history remount, and a new requ
   execFileSync('git', ['switch', 'side'], { cwd: repo, env: { ...process.env, GIT_CONFIG_GLOBAL: '/dev/null', GIT_CONFIG_SYSTEM: '/dev/null' } });
   const ticket = await call({ action: 'ticket', sessionId });
   await page.goto(`${origin}/?session=${encodeURIComponent(sessionId)}#ticket=${encodeURIComponent(ticket.ticket as string)}`);
-  await page.getByRole('button', { name: /提交历史/ }).first().click();
-  await expect(page.getByRole('button', { name: /提交历史/ }).first()).toContainText('200');
+  await page.getByRole('navigation', { name: '主视图', exact: true }).getByRole('button', { name: '历史', exact: true }).click();
+  await expect(page.locator('.history-loaded-count')).toHaveText('已加载 200 条提交');
   await page.getByRole('button', { name: /定位 HEAD/ }).click();
   await expect(page.locator('.commit-row.selected .head-label')).toHaveText('HEAD');
   const scroll = page.locator('.history-scroll');
@@ -92,7 +92,7 @@ test('locating HEAD runs once across refresh and history remount, and a new requ
   await page.waitForTimeout(500);
   expect(await scroll.evaluate(node => node.scrollTop)).toBe(600);
   await page.getByRole('button', { name: /当前改动/ }).first().click();
-  await page.getByRole('button', { name: /提交历史/ }).first().click();
+  await page.getByRole('navigation', { name: '主视图', exact: true }).getByRole('button', { name: '历史', exact: true }).click();
   await page.waitForTimeout(500);
   expect(await scroll.evaluate(node => node.scrollTop)).toBe(600);
   await page.getByRole('button', { name: /定位 HEAD/ }).click();
@@ -100,15 +100,48 @@ test('locating HEAD runs once across refresh and history remount, and a new requ
   await expect(page.locator('.commit-row.selected .head-label')).toHaveText('HEAD');
 });
 
+test('a late initial overview cannot replace an explicitly requested history page', async ({ page }) => {
+  let releaseOverview!: () => void; let releasePage!: () => void; let pageCaptured!: () => void;
+  const overviewHold = new Promise<void>(resolve => { releaseOverview = resolve; });
+  const pageHold = new Promise<void>(resolve => { releasePage = resolve; });
+  const captured = new Promise<void>(resolve => { pageCaptured = resolve; });
+  let firstOverview = true; let firstPage = true;
+  await page.route(`${origin}/api`, async route => {
+    const request = route.request().postDataJSON();
+    if (request.action === 'overview' && firstOverview) {
+      firstOverview = false; const response = await route.fetch(); await overviewHold;
+      await route.fulfill({ response }).catch(() => undefined); return;
+    }
+    if (request.action === 'history' && request.cursor && firstPage) {
+      firstPage = false; const response = await route.fetch(); pageCaptured(); await pageHold;
+      await route.fulfill({ response }).catch(() => undefined); return;
+    }
+    await route.fallback();
+  });
+  try {
+    const ticket = await call({ action: 'ticket', sessionId });
+    await page.goto(`${origin}/?session=${encodeURIComponent(sessionId)}#ticket=${encodeURIComponent(ticket.ticket as string)}`);
+    await page.getByRole('navigation', { name: '主视图', exact: true }).getByRole('button', { name: '历史', exact: true }).click();
+    await expect(page.locator('.history-loaded-count')).toBeVisible();
+    await expect(page.locator('.history-read-state')).toHaveAttribute('data-phase', 'idle');
+    await page.getByRole('button', { name: '全部引用', exact: true }).click();
+    await expect(page.locator('.history-loaded-count')).toHaveText('已加载 200 条提交');
+    await page.getByRole('button', { name: /继续加载 200 条/ }).click(); await captured;
+    releaseOverview(); await expect(page.locator('.overview-read-state')).toHaveAttribute('data-phase', 'idle');
+    releasePage(); await expect(page.locator('.history-loaded-count')).toHaveText('已加载 231 条提交');
+    await expect(page.locator('.history-read-state')).toHaveAttribute('data-phase', 'idle');
+  } finally { releaseOverview(); releasePage(); }
+});
+
 test('focus refresh retains all loaded history pages and rejects a delayed page after changing scope', async ({ page }) => {
   const ticket = await call({ action: 'ticket', sessionId });
   await page.goto(`${origin}/?session=${encodeURIComponent(sessionId)}#ticket=${encodeURIComponent(ticket.ticket as string)}`);
-  const historyTab = page.getByRole('button', { name: /提交历史/ }).first();
+  const historyTab = page.getByRole('navigation', { name: '主视图', exact: true }).getByRole('button', { name: '历史', exact: true });
   await historyTab.click();
   await page.getByRole('button', { name: '全部引用', exact: true }).click();
-  await expect(historyTab).toContainText('200');
+  await expect(page.locator('.history-loaded-count')).toHaveText('已加载 200 条提交');
   await page.getByRole('button', { name: /继续加载 200 条/ }).click();
-  await expect(historyTab).toContainText('231');
+  await expect(page.locator('.history-loaded-count')).toHaveText('已加载 231 条提交');
   const scroll = page.locator('.history-scroll');
   const deepTop = 200 * await page.locator('.commit-row').first().evaluate(node => node.getBoundingClientRect().height);
   await scroll.evaluate((node, top) => { node.scrollTop = top; }, deepTop);
@@ -136,13 +169,13 @@ test('focus refresh retains all loaded history pages and rejects a delayed page 
     await page.evaluate(() => window.dispatchEvent(new Event('focus')));
     await expect.poll(() => firstPagesDelivered).toBe(1);
     await expect.poll(async () => secondPagesHeld > 0 || await page.locator('.history-read-state').getAttribute('data-phase') === 'idle').toBe(true);
-    await expect(historyTab).toContainText('231');
+    await expect(page.locator('.history-loaded-count')).toHaveText('已加载 231 条提交');
     expect(secondPagesHeld).toBe(1);
     await expect(page.locator('.history-read-state')).toHaveAttribute('data-phase', 'loading');
     expect(await scroll.evaluate(node => node.scrollTop)).toBe(deepTop);
     release();
     await expect(page.locator('.history-read-state')).toHaveAttribute('data-phase', 'idle');
-    await expect(historyTab).toContainText('231');
+    await expect(page.locator('.history-loaded-count')).toHaveText('已加载 231 条提交');
     expect(await scroll.evaluate(node => node.scrollTop)).toBe(deepTop);
 
     hold = new Promise<void>(resolve => { release = resolve; });

@@ -1,5 +1,5 @@
 import { useI18n } from '../../i18n/index';
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from 'react';
 import type { Diff } from '@git-view/contracts';
 import { comparisonObjects, objectLabel, presentDiff } from './diff-presentation';
 import { alignDiffLines, SideBySideDiff } from '../comparison/SideBySideDiff';
@@ -11,6 +11,8 @@ export function DiffView({ diff, observedAt, positionKey, actions }: { diff: Dif
   const { t, locale } = useI18n();
   const [preferences, setPreferences] = useState(readPreferences);
   const [rawOpen, setRawOpen] = useState(false);
+  const [detailsOpen, setDetailsOpen] = useState(false);
+  const detailsId = useId();
   const [copyStatus, setCopyStatus] = useState('');
   const copySource = useRef({ positionKey, text: diff.text });
   copySource.current = { positionKey, text: diff.text };
@@ -19,7 +21,7 @@ export function DiffView({ diff, observedAt, positionKey, actions }: { diff: Dif
   useEffect(() => {
     position.current = readPreferences().positions[positionKey] || 0;
     if (scroll.current) scroll.current.scrollTop = position.current;
-    setRawOpen(false); setCopyStatus('');
+    setRawOpen(false); setDetailsOpen(false); setCopyStatus('');
   }, [positionKey]);
   useEffect(() => { if (scroll.current) scroll.current.scrollTop = position.current; }, [preferences.diffMode, preferences.wrap]);
   useEffect(() => { setCopyStatus(''); }, [diff.text]);
@@ -38,15 +40,26 @@ export function DiffView({ diff, observedAt, positionKey, actions }: { diff: Dif
   const mode = isPatch ? preferences.diffMode : diff.format;
   const incompleteReason = !diff.complete && diff.format !== 'unavailable' ? `${diff.reason ? `${diff.reason} ` : ''}仅显示已获取内容。` : diff.reason;
   return <div className={`diff-view ${preferences.wrap ? 'wrap-lines' : 'nowrap-lines'}`} data-diff-mode={mode}>
-    <div className="diff-header"><h2 title={diff.entry.path}>{diff.entry.path}</h2><div className="diff-count">{isPatch ? <>{!diff.complete && <span>{t("已获取")}</span>}<span className="text-add">+{additions}</span><span className="text-remove">−{deletions}</span></> : <span className="muted">{diff.format === 'text' ? t('文本预览') : t('未展开')}</span>}</div></div>
-    {actions && <div className="diff-file-actions">{actions}</div>}
+    <div className="diff-header">
+      <h2 title={diff.entry.path}>{diff.entry.path}</h2>
+      <div className="diff-count">{isPatch ? <>{!diff.complete && <span>{t("已获取")}</span>}<span className="text-add">+{additions}</span><span className="text-remove">−{deletions}</span></> : <span className="muted">{diff.format === 'text' ? t('文本预览') : t('未展开')}</span>}</div>
+      <div className="diff-header-controls">
+        {actions && <div className="diff-file-actions">{actions}</div>}
+        {hasLines && diff.format !== 'unavailable' && <div className="diff-toolbar" role="group" aria-label={isPatch ? t('差异展示') : t('文本展示')}>{isPatch && <><button aria-pressed={preferences.diffMode === 'unified'} onClick={() => setMode('unified')}>{t("单列")}</button><button aria-pressed={preferences.diffMode === 'split'} onClick={() => setMode('split')}>{t("并排")}</button></>}<label><input type="checkbox" checked={preferences.wrap} onChange={event => setWrap(event.target.checked)}/>{t("自动折行")}</label></div>}
+      </div>
+    </div>
     <div className="diff-baseline">
       {objects.before && <><span title={objects.before.value}>{objectLabel({ ...objects.before, label: t(objects.before.label) })}</span><span aria-hidden="true">→</span></>}
       <span title={objects.after.value}>{objectLabel({ ...objects.after, label: t(objects.after.label) })}</span>
-      {observedAt && <time dateTime={observedAt}>{t("读取于 ")}{new Date(observedAt).toLocaleTimeString(locale, { hour12: false })}</time>}
+      <button className="diff-details-toggle" aria-label={t('文件变化信息')} aria-expanded={detailsOpen} aria-controls={detailsId} onClick={() => setDetailsOpen(value => !value)}>{t('查看详情')} <span aria-hidden="true">{detailsOpen ? '▾' : '▸'}</span></button>
     </div>
+    <dl id={detailsId} className="diff-object-details" hidden={!detailsOpen} aria-label={t('文件变化信息')}>
+      <div><dt>{t('所选路径')}</dt><dd>{diff.entry.path}</dd></div>
+      {objects.before && <div><dt>{t(objects.before.label)}</dt><dd>{objects.before.value}</dd></div>}
+      <div><dt>{t(objects.after.label)}</dt><dd>{objects.after.value}</dd></div>
+      {observedAt && <div><dt>{t('读取于 ')}</dt><dd><time dateTime={observedAt}>{new Date(observedAt).toLocaleString(locale, { hour12: false })}</time></dd></div>}
+    </dl>
     {metadata.length > 0 && <dl className="patch-metadata" aria-label={t("文件变化信息")}>{metadata.map((item, index) => <div key={index}><dt>{t(item.label)}</dt><dd>{item.label === '新增文件' || item.label === '删除文件' ? t(item.value) : item.value}</dd></div>)}</dl>}
-    {hasLines && diff.format !== 'unavailable' && <div className="diff-toolbar" role="group" aria-label={isPatch ? t('差异展示') : t('文本展示')}>{isPatch && <><button aria-pressed={preferences.diffMode === 'unified'} onClick={() => setMode('unified')}>{t("单列")}</button><button aria-pressed={preferences.diffMode === 'split'} onClick={() => setMode('split')}>{t("并排")}</button></>}<label><input type="checkbox" checked={preferences.wrap} onChange={event => setWrap(event.target.checked)}/>{t("自动折行")}</label></div>}
     {incompleteReason && <div className="notice warning" role="status">{t(incompleteReason)}</div>}
     {diff.format === 'unavailable' ? <div className="empty-inline"><span className="empty-glyph">▧</span><h3>{t("内容未展开")}</h3></div> : hasLines ? <div ref={scroll} className="code-scroll" onScroll={event => { position.current = event.currentTarget.scrollTop; rememberPosition(positionKey, position.current); }} tabIndex={0} aria-label={diff.format === 'text' ? t('未跟踪文件文本预览') : t('文件差异')}>
       {mode === 'split' ? <SideBySideDiff rows={alignDiffLines(lines)} beforeLabel={t(objects.before!.label)} afterLabel={t(objects.after.label)}/> : <div className={`code-table${isPatch ? '' : ' text-code-table'}`}>{lines.map((line, index) => <div key={index} className={`code-line ${line.type}`}>

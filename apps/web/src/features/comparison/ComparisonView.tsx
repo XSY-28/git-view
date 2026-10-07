@@ -21,7 +21,7 @@ export function ComparisonView({ session, navigation, initialOptions, initialCom
   onOptionsChange: (options: ComparisonOptions) => void; onCancellation: (cancelled: boolean) => void;
   onFileHistory?: (diff: Diff) => void;
 }) {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const [options, setOptions] = useState<ComparisonOptions>(() => initialOptions ?? defaultOptions(navigation, initialCommit));
   const [content, setContent] = useState<'files' | 'a' | 'b'>('files');
   const [filter, setFilter] = useState('');
@@ -57,20 +57,32 @@ export function ComparisonView({ session, navigation, initialOptions, initialCom
     </form>
     <ReadFeedback state={read.comparison} hasValue={Boolean(result)} scope={t('版本比较')} className="comparison-read" onCancel={() => read.cancel('compare')} onRetry={() => { if (valid) read.compare(options, true); }}/>
     {result && <div className={`comparison-snapshot ${!read.fresh ? 'stale-content' : ''}`}>
-      <div className="comparison-fixed-endpoints">{(['a', 'b'] as const).map(side => <span key={side}><strong>{side.toUpperCase()}</strong><span>{displayRef(result[side].label)}</span><code title={result[side].oid}>{result[side].oid.slice(0, 10)}</code></span>)}</div>
-      <div className="comparison-base"><span>{t('共同祖先')}</span>{result.mergeBases.oids.map(oid => <code key={oid} title={oid}>{oid.slice(0, 10)}</code>)}{result.mergeBases.reason && <span className="comparison-limitation">{t(result.mergeBases.reason)}</span>}</div>
+      <details className="comparison-resolved-details" key={result.comparisonId}>
+        <summary className="comparison-snapshot-summary">
+          <span className="comparison-fixed-endpoints">{(['a', 'b'] as const).map(side => <span key={side}><strong>{side.toUpperCase()}</strong>{result[side].selector.kind !== 'commit' && <span title={result[side].label}>{displayRef(result[side].label)}</span>}<code title={result[side].oid}>{result[side].oid.slice(0, 10)}</code></span>)}</span>
+          <span className="comparison-base"><span>{t('共同祖先')}</span>{result.mergeBases.oids.map(oid => <code key={oid} title={oid}>{oid.slice(0, 10)}</code>)}</span>
+          <span className="comparison-details-label">{t('查看详情')} <span className="comparison-details-arrow" aria-hidden="true">▸</span></span>
+        </summary>
+        <dl className="comparison-full-endpoints">
+          {(['a', 'b'] as const).map(side => <div key={side}><dt>{t('比较端点 {0}', [side.toUpperCase()])}</dt><dd>{result[side].selector.kind !== 'commit' && <span>{result[side].label}</span>}<code>{result[side].oid}</code></dd></div>)}
+          {result.mergeBases.oids.length > 0 && <div><dt>{t('共同祖先')}</dt><dd>{result.mergeBases.oids.map(oid => <code key={oid}>{oid}</code>)}</dd></div>}
+          <div><dt>{t('读取于 ')}</dt><dd><time dateTime={result.observedAt}>{new Date(result.observedAt).toLocaleString(locale, { hour12: false })}</time></dd></div>
+        </dl>
+      </details>
+      {result.mergeBases.reason && <p className="comparison-limitation">{t(result.mergeBases.reason)}</p>}
       {result.warnings.map(warning => <p className="comparison-limitation" key={warning}>{t(warning)}</p>)}
     </div>}
-    {result && <nav className="comparison-content-tabs" aria-label={t('比较内容')}>
-      <button aria-pressed={content === 'files'} onClick={() => setContent('files')}>{t('文件差异')} <span>{tree?.changes.length ?? '·'}</span></button>
-      {(['a', 'b'] as const).map(side => <button key={side} aria-pressed={content === side} onClick={() => setContent(side)}>{t('{0} 独有提交', [side.toUpperCase()])} <span>{result.exclusive[side]}{!result.exclusive.complete && '*'}</span></button>)}
-    </nav>}
-    {result && content === 'files' ? <>
-      <div className="comparison-modes" aria-label={t('文件比较基准')}>
+    {result && <div className="comparison-controls">
+      <nav className="comparison-content-tabs" aria-label={t('比较内容')}>
+        <button aria-pressed={content === 'files'} onClick={() => setContent('files')}>{t('文件差异')} <span>{tree?.changes.length ?? '·'}</span></button>
+        {(['a', 'b'] as const).map(side => <button key={side} aria-pressed={content === side} onClick={() => setContent(side)}>{t('{0} 独有提交', [side.toUpperCase()])} <span>{result.exclusive[side]}{!result.exclusive.complete && '*'}</span></button>)}
+      </nav>
+      {content === 'files' && <div className="comparison-modes" role="group" aria-label={t('文件比较基准')}>
         <button aria-pressed={read.mode === 'endpoints'} disabled={!read.fresh} onClick={() => read.changeMode('endpoints')}>A → B</button>
         <button aria-pressed={read.mode === 'merge-base'} disabled={!read.fresh || !result.fromMergeBase} title={result.mergeBases.reason ? t(result.mergeBases.reason) : undefined} onClick={() => read.changeMode('merge-base')}>{t('共同祖先 → B')}</button>
-        {tree && <span className="comparison-tree-direction"><code title={tree.base}>{tree.base.slice(0, 10)}</code> → <code title={tree.target}>{tree.target.slice(0, 10)}</code></span>}
-      </div>
+      </div>}
+    </div>}
+    {result && content === 'files' ? <>
       <main className={`workspace comparison-workspace mobile-${mobilePanel}`}>
         <aside className="list-panel"><ChangeList scope="comparison" entries={tree?.changes ?? []} selected={read.selectedId} disabled={!read.fresh} filter={filter} onFilter={value => { setFilter(value); read.filterFiles(value); }} onSelect={(entry, activate) => { read.selectFile(entry); if (activate) onShowDiff(); }}/></aside>
         <section className="detail-panel" aria-label={t('比较文件详情')}>

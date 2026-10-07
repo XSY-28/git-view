@@ -24,7 +24,7 @@ async function open(page: Page, history = false) {
   await page.goto(`${origin}/?session=${sessionId}#ticket=${ticket.ticket}`);
   await expect(page.locator('.code-scroll')).toContainText('+working-a.txt');
   if (history) {
-    await page.getByRole('button', { name: /提交历史/ }).first().click();
+    await page.getByRole('navigation', { name: '主视图', exact: true }).getByRole('button', { name: '历史', exact: true }).click();
     await page.locator('.commit-row').filter({ hasText: 'feedback changes' }).click();
     await expect(page.locator('.code-scroll')).toContainText('+committed-a.txt');
   }
@@ -340,7 +340,7 @@ test('a cleared file selection has no synthetic diff read or cancel while its ov
 });
 
 test('a compact navigation error is fully readable by keyboard without moving its action or the reading layout', async ({ page }) => {
-  await page.setViewportSize({ width: 1180, height: 760 }); await open(page);
+  await page.setViewportSize({ width: 1180, height: 760 }); await open(page, true);
   const area = feedback(page, '引用');
   const before = await readingState(page); const slotBefore = await area.boundingBox();
   const longError = `引用读取失败：${'这是必须能够逐行查看的完整错误详情，包含出错位置和重新读取的上下文。'.repeat(16)}详情结束。`;

@@ -87,8 +87,9 @@ test.afterAll(async () => { if (origin) await call({ action: 'shutdown' }).catch
 test('HEAD is the initial range; all refs defaults to interleaved dates and can show grouped topology', async ({ page }) => {
   const before = await snapshot(); await open(page);
   await expect(page.getByRole('button', { name: /当前改动/ }).first()).toHaveClass(/active/);
+  await expect(page.getByRole('complementary', { name: '历史范围', exact: true })).toHaveCount(0);
+  await page.getByRole('navigation', { name: '主视图', exact: true }).getByRole('button', { name: '历史', exact: true }).click();
   await expect(page.getByRole('button', { name: '当前 HEAD', exact: true })).toHaveAttribute('aria-pressed', 'true');
-  await page.getByRole('button', { name: /提交历史/ }).first().click();
   await expect(page.locator('.commit-row')).toHaveCount(4);
   await expect(page.locator('.commit-row').first()).toContainText('MAIN merge feature');
   await expect(page.locator('.commit-row').filter({ hasText: 'TODO maintenance' })).toHaveCount(0);
@@ -100,6 +101,8 @@ test('HEAD is the initial range; all refs defaults to interleaved dates and can 
   const date = await historyData(await dateResponse);
   await expect(page.getByLabel('历史排序', { exact: true })).toHaveValue('date');
   expect(date.commits).toHaveLength(200);
+  await expect(page.locator('.history-pagination')).toBeInViewport({ ratio: 1 });
+  await expect(page.getByRole('button', { name: /继续加载 200 条/ })).toBeInViewport({ ratio: 1 });
   expect(date.commits.slice(0, 6).map(commit => commit.subject)).toEqual(['TODO maintenance 230', 'MAIN merge feature', 'TODO maintenance 229', 'MAIN implementation', 'TODO maintenance 228', 'FEATURE implementation']);
   expect(date.commits.find(commit => commit.subject === 'MAIN merge feature')?.parents).toHaveLength(2);
   await expect(page.locator('.commit-row[data-row="1"]')).toContainText('MAIN merge feature');
@@ -117,6 +120,7 @@ test('HEAD is the initial range; all refs defaults to interleaved dates and can 
 
 test('late sort responses and late pagination cannot replace the current ordering', async ({ page }) => {
   const before = await snapshot(); await open(page);
+  await page.getByRole('navigation', { name: '主视图', exact: true }).getByRole('button', { name: '历史', exact: true }).click();
   await page.getByRole('button', { name: '全部引用', exact: true }).click();
   const order = page.getByLabel('历史排序', { exact: true });
   await expect(order).toHaveValue('date');
@@ -180,7 +184,7 @@ test('late sort responses and late pagination cannot replace the current orderin
     await releaseAll(sort, sortRequests);
     await expect(order).toHaveValue('date');
     await expectRenderedHistory(page, date);
-    await expect(page.getByRole('button', { name: /提交历史/ }).first()).toContainText('200');
+    await expect(page.locator('.history-loaded-count')).toHaveText('已加载 200 条提交');
     await expect(page.locator('.commit-row[data-row="1"]')).toContainText('MAIN merge feature');
     await expect(page.locator('.history-read-state')).toHaveAttribute('data-phase', 'idle');
 
@@ -208,7 +212,7 @@ test('late sort responses and late pagination cannot replace the current orderin
     await releaseAll(pagination, pageRequests);
     await expect(order).toHaveValue('topo');
     await expectRenderedHistory(page, topo);
-    await expect(page.getByRole('button', { name: /提交历史/ }).first()).toContainText('200');
+    await expect(page.locator('.history-loaded-count')).toHaveText('已加载 200 条提交');
     await expect(page.locator('.commit-row').filter({ hasText: 'MAIN merge feature' })).toHaveCount(0);
     await expect(page.locator('.history-read-state')).toHaveAttribute('data-phase', 'idle');
     await expect.poll(() => graphLanes(page)).toEqual(['15']);
@@ -219,6 +223,7 @@ test('late sort responses and late pagination cannot replace the current orderin
 
 test('all-ref ordering survives view and scope changes and belongs to each worktree', async ({ page }) => {
   const before = await snapshot(); await open(page);
+  await page.getByRole('navigation', { name: '主视图', exact: true }).getByRole('button', { name: '历史', exact: true }).click();
   await page.getByRole('button', { name: '全部引用', exact: true }).click();
   await page.getByLabel('历史排序', { exact: true }).selectOption('topo');
   await expect.poll(() => graphLanes(page)).toEqual(['15']);
@@ -228,7 +233,7 @@ test('all-ref ordering survives view and scope changes and belongs to each workt
   await page.getByRole('button', { name: '全部引用', exact: true }).click();
   await expect(page.getByLabel('历史排序', { exact: true })).toHaveValue('topo');
   await page.getByRole('button', { name: /当前改动/ }).first().click();
-  await page.getByRole('button', { name: /提交历史/ }).first().click();
+  await page.getByRole('navigation', { name: '主视图', exact: true }).getByRole('button', { name: '历史', exact: true }).click();
   await expect(page.getByLabel('历史排序', { exact: true })).toHaveValue('topo');
 
   async function switchWorktree(from: string, to: string) {
@@ -238,6 +243,7 @@ test('all-ref ordering survives view and scope changes and belongs to each workt
   }
   await switchWorktree('main-repository', 'feature-worktree');
   await expect(page.getByRole('button', { name: /当前改动/ }).first()).toHaveClass(/active/);
+  await page.getByRole('navigation', { name: '主视图', exact: true }).getByRole('button', { name: '历史', exact: true }).click();
   await expect(page.getByRole('button', { name: '当前 HEAD', exact: true })).toHaveAttribute('aria-pressed', 'true');
   await page.getByRole('button', { name: '全部引用', exact: true }).click();
   await expect(page.getByLabel('历史排序', { exact: true })).toHaveValue('date');
@@ -253,6 +259,7 @@ test('all-ref ordering survives view and scope changes and belongs to each workt
 
 test('history ordering remains usable at a 390px viewport', async ({ page }, testInfo) => {
   await page.setViewportSize({ width: 390, height: 844 }); await open(page);
+  await page.getByRole('navigation', { name: '主视图', exact: true }).getByRole('button', { name: '历史', exact: true }).click();
   await page.getByRole('button', { name: '历史范围', exact: true }).click();
   await page.getByRole('button', { name: '全部引用', exact: true }).click();
   const order = page.getByLabel('历史排序', { exact: true });
@@ -288,8 +295,8 @@ test('wide merge graphs have a clipped graph column separate from descriptions a
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto(`${origin}/?session=${encodeURIComponent(opened.sessionId as string)}#ticket=${encodeURIComponent(ticket.ticket as string)}`);
   await expect(page.locator('.repository-title h1')).toHaveText('wide-history');
-  await page.getByRole('button', { name: /提交历史/ }).first().click();
-  await expect(page.getByRole('button', { name: /提交历史/ }).first()).toContainText('194');
+  await page.getByRole('navigation', { name: '主视图', exact: true }).getByRole('button', { name: '历史', exact: true }).click();
+  await expect(page.locator('.history-loaded-count')).toHaveText('已加载 194 条提交');
   const row = page.locator('.commit-row[data-row="0"]');
   await expect(row.locator('.commit-subject')).toContainText('Merge 64 parallel branches');
   await expect(row.locator('.commit-graph path')).toHaveCount(64);
@@ -417,7 +424,7 @@ test('wide merge graphs have a clipped graph column separate from descriptions a
   const subject = await deepRow.locator('.commit-subject').innerText();
   await deepRow.locator('.commit-subject').click();
   await expect(page.locator('.commit-detail')).toContainText(subject);
-  await page.getByRole('button', { name: '提交列表', exact: true }).click();
+  await page.getByRole('navigation', { name: '窄窗口面板', exact: true }).getByRole('button', { name: '提交列表', exact: true }).click();
   await expect(deepRow).toHaveAttribute('aria-pressed', 'true');
   await deepRow.focus(); await deepRow.press('ArrowDown');
   await expect(page.locator('.commit-row[data-row="101"]')).toBeFocused();
@@ -426,7 +433,7 @@ test('wide merge graphs have a clipped graph column separate from descriptions a
   await expect(page.locator('.commit-row[data-row="193"]')).toBeFocused();
   await expect(page.locator('.commit-row[data-row="193"]')).toHaveAttribute('aria-pressed', 'true');
   await page.getByRole('button', { name: '定位 HEAD', exact: true }).click();
-  await page.getByRole('button', { name: '提交列表', exact: true }).click();
+  await page.getByRole('navigation', { name: '窄窗口面板', exact: true }).getByRole('button', { name: '提交列表', exact: true }).click();
   await expect.poll(() => scroll.evaluate(node => node.scrollTop)).toBe(0);
   await expect(row).toBeInViewport();
   await expect(row).toHaveAttribute('aria-pressed', 'true');

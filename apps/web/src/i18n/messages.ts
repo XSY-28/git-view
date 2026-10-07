@@ -1,5 +1,10 @@
 // Chinese source messages remain stable; repository content is never passed through this catalog.
 export const englishMessages: Record<string, string> = {
+  "历史": "History",
+  "历史内容": "History contents",
+  "更多": "More",
+  "更多历史工具": "More history tools",
+  "已加载 {0} 条提交": "Loaded {0} commits",
   "历史调查": "Investigate",
   "历史调查内容": "Investigation views",
   "提交搜索": "Search commits",

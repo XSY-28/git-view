@@ -56,7 +56,7 @@ try {
   const elevated = (await exec('powershell.exe', ['-NoProfile', '-Command', "([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)"])).stdout.trim() === 'True';
   report.elevatedHost = elevated;
   if (elevated) {
-    policyOverride = { key: policyKey, name: policyName, previous: JSON.parse((await exec('powershell.exe', ['-NoProfile', '-Command', `$ErrorActionPreference='Stop'; $k='${policyKey}'; $n='${policyName}'; $v=Get-ItemPropertyValue -LiteralPath $k -Name $n -ErrorAction SilentlyContinue; ConvertTo-Json -Compress -InputObject $v`])).stdout) };
+    policyOverride = { key: policyKey, name: policyName, previous: JSON.parse((await exec('powershell.exe', ['-NoProfile', '-Command', `$ErrorActionPreference='Stop'; $k='${policyKey}'; $n='${policyName}'; $v=Get-ItemPropertyValue -LiteralPath $k -Name $n -ErrorAction SilentlyContinue; ConvertTo-Json -Compress -InputObject $v`])).stdout.trim() || 'null') };
     await exec('powershell.exe', ['-NoProfile', '-Command', `$ErrorActionPreference='Stop'; New-Item -Path '${policyKey}' -Force | Out-Null; New-ItemProperty -LiteralPath '${policyKey}' -Name '${policyName}' -PropertyType String -Value '--remote-debugging-port=${port} --remote-debugging-address=127.0.0.1' -Force | Out-Null`]);
   }
   // This debugging endpoint exists only in the disposable CI process.

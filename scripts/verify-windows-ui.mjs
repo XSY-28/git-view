@@ -101,6 +101,16 @@ try {
   report.checks.repositoryFingerprintUnchanged = true;
   const nodes = JSON.parse((await exec('powershell.exe', ['-NoProfile', '-Command', `ConvertTo-Json -Compress -InputObject @(Get-CimInstance Win32_Process -Filter "ParentProcessId = ${child.pid}" | Where-Object Name -eq 'node.exe' | Select-Object -ExpandProperty ProcessId)`])).stdout);
   assert.ok(nodes.length > 0, 'The real packaged Node sidecar must be running.');
+  const consoleHandles = JSON.parse((await exec('powershell.exe', ['-NoProfile', '-Command', `
+    Add-Type -TypeDefinition 'using System; using System.Runtime.InteropServices; public static class ConsoleProbe { [DllImport("kernel32.dll")] public static extern bool FreeConsole(); [DllImport("kernel32.dll")] public static extern bool AttachConsole(uint pid); [DllImport("kernel32.dll")] public static extern IntPtr GetConsoleWindow(); }';
+    $handles = @(${nodes.join(',')} | ForEach-Object {
+      [ConsoleProbe]::FreeConsole() | Out-Null;
+      if ([ConsoleProbe]::AttachConsole($_)) { [ConsoleProbe]::GetConsoleWindow().ToInt64(); [ConsoleProbe]::FreeConsole() | Out-Null } else { 0 }
+    });
+    ConvertTo-Json -Compress -InputObject $handles
+  `])).stdout);
+  assert.ok(consoleHandles.every(handle => handle === 0), 'The background Node sidecar must not allocate a console window.');
+  report.checks.noSidecarConsoleWindow = true;
   await exec('powershell.exe', ['-NoProfile', '-Command', `$p = Get-Process -Id ${child.pid}; if (-not $p.CloseMainWindow()) { throw 'Native window did not accept close' }`]);
   const result = await Promise.race([exited, wait(15_000).then(() => { throw new Error('Native host did not exit after window close.'); })]);
   assert.equal(result.code, 0);

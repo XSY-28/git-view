@@ -19,6 +19,7 @@ const exec = promisify(execFile);
 const env = { ...process.env, GIT_VIEW_HOME: join(temporary, 'state'), GIT_CONFIG_NOSYSTEM: '1', GIT_CONFIG_GLOBAL: 'NUL' };
 for (const name of Object.keys(env)) if (name.startsWith('GIT_') && !['GIT_VIEW_HOME', 'GIT_CONFIG_NOSYSTEM', 'GIT_CONFIG_GLOBAL'].includes(name)) delete env[name];
 let child; let browser; let exited;
+let diagnostic = ''; let probeFailure;
 const report = { platform: process.platform, arch: process.arch, executable, checks: {}, environment: 'GitHub Windows runner; installed release WebView2 window', physicalWindows10Or11: 'unverified' };
 try {
   await mkdir(output, { recursive: true });
@@ -49,13 +50,12 @@ try {
   await new Promise(resolveClose => server.close(resolveClose));
   // This debugging endpoint exists only in the disposable CI process.
   child = spawn(executable, [], { env: { ...env, WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS: `--remote-debugging-port=${port} --remote-debugging-address=127.0.0.1`, WEBVIEW2_USER_DATA_FOLDER: join(temporary, 'webview') }, stdio: ['ignore', 'pipe', 'pipe'] });
-  let diagnostic = '';
   child.stdout.on('data', chunk => { diagnostic += chunk; });
   child.stderr.on('data', chunk => { diagnostic += chunk; });
   exited = new Promise((resolveExit, reject) => { child.once('exit', (code, signal) => resolveExit({ code, signal })); child.once('error', reject); });
   await expect.poll(async () => {
     if (child.exitCode !== null) throw new Error(`Native app exited before WebView initialization: ${diagnostic}`);
-    return fetch(`http://127.0.0.1:${port}/json/version`).then(result => result.ok, () => false);
+    return fetch(`http://127.0.0.1:${port}/json/version`).then(result => { probeFailure = `HTTP ${result.status}`; return result.ok; }, error => { probeFailure = String(error.cause || error); return false; });
   }, { timeout: 60_000, message: 'Installed WebView2 must expose its real window' }).toBe(true);
   browser = await chromium.connectOverCDP(`http://127.0.0.1:${port}`);
   await expect.poll(() => browser.contexts().flatMap(context => context.pages()).length, { timeout: 30_000 }).toBeGreaterThan(0);
@@ -98,6 +98,10 @@ try {
   await writeFile(join(output, 'windows-native-verification.json'), `${JSON.stringify(report, null, 2)}\n`);
   console.log('Installed Windows window, repository opening, staged/unstaged diff, history and normal exit passed.');
 } catch (error) {
+  const processes = child ? await exec('powershell.exe', ['-NoProfile', '-Command', `ConvertTo-Json -Depth 4 -InputObject @{ app = @(Get-Process -Id ${child.pid} -ErrorAction SilentlyContinue | Select-Object Id,MainWindowTitle,Responding,SessionId,@{Name='WindowHandle';Expression={ [string]$_.MainWindowHandle }}); webviews = @(Get-CimInstance Win32_Process | Where-Object { $_.Name -eq 'msedgewebview2.exe' -or $_.ProcessId -eq ${child.pid} -or $_.ParentProcessId -eq ${child.pid} } | Select-Object Name,ProcessId,ParentProcessId,CommandLine) }`]).then(result => result.stdout, failure => String(failure)) : '';
+  await writeFile(join(output, 'windows-native-diagnostics.json'), `${JSON.stringify({ error: String(error), diagnostic, probeFailure, processes }, null, 2)}\n`);
+  const screenshot = join(output, 'windows-native-desktop-failure.png').replaceAll("'", "''");
+  await exec('powershell.exe', ['-NoProfile', '-Command', `Add-Type -AssemblyName System.Windows.Forms; Add-Type -AssemblyName System.Drawing; $r=[System.Windows.Forms.SystemInformation]::VirtualScreen; $b=New-Object System.Drawing.Bitmap($r.Width,$r.Height); $g=[System.Drawing.Graphics]::FromImage($b); try { $g.CopyFromScreen($r.Left,$r.Top,0,0,$b.Size); $b.Save('${screenshot}',[System.Drawing.Imaging.ImageFormat]::Png) } finally { $g.Dispose(); $b.Dispose() }`]).catch(failure => console.log(`Desktop screenshot unavailable: ${failure.message}`));
   if (browser) for (const page of browser.contexts().flatMap(context => context.pages())) await page.screenshot({ path: join(output, 'windows-native-failure.png') }).catch(() => {});
   throw error;
 } finally {

@@ -1,10 +1,17 @@
 name: Unsigned desktop packages
 on:
   workflow_dispatch:
+    inputs:
+      verify_package_run:
+        description: Optional existing package run for a Windows verification-only retry
+        required: false
+        default: ''
+        type: string
 permissions:
   contents: read
 jobs:
   package:
+    if: inputs.verify_package_run == ''
     strategy:
       fail-fast: false
       matrix:
@@ -24,6 +31,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: apps/desktop/src-tauri
+          cache-on-failure: true
       - run: pnpm install --frozen-lockfile
       - run: pnpm typecheck
       - name: macOS full tests including HTTP transport
@@ -49,5 +57,39 @@ jobs:
         if: always()
         with:
           name: unsigned-desktop-${{ matrix.os }}
+          path: dist/installers/
+          if-no-files-found: error
+  verify_windows:
+    if: inputs.verify_package_run != ''
+    runs-on: windows-2025
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.7.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.19.0
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Download the existing installer without rebuilding
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PACKAGE_RUN: ${{ inputs.verify_package_run }}
+        run: |
+          if ($env:PACKAGE_RUN -notmatch '^\d+$') { throw 'Package run must be a numeric GitHub Actions run ID' }
+          gh run download $env:PACKAGE_RUN --name unsigned-desktop-windows-2025 --dir dist/installers
+          if ($LASTEXITCODE -ne 0) { throw 'Could not download the installer' }
+      - shell: pwsh
+        run: ./scripts/verify-windows-package.ps1
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: windows-installer-verification
           path: dist/installers/
           if-no-files-found: error

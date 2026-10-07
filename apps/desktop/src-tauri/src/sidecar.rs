@@ -68,6 +68,10 @@ impl Sidecar {
         }
         #[cfg(windows)]
         {
+            command.env(
+                "GIT_VIEW_NATIVE_HELPER",
+                std::env::current_exe().map_err(|_| "Cannot locate native helper")?,
+            );
             use std::os::windows::process::CommandExt;
             // The GUI host has no console; keep its piped background runtime quiet.
             command.creation_flags(windows_sys::Win32::System::Threading::CREATE_NO_WINDOW);
@@ -266,12 +270,12 @@ fn reap(running: Running) {
 }
 
 #[cfg(windows)]
-struct WindowsJob(windows_sys::Win32::Foundation::HANDLE);
+pub(crate) struct WindowsJob(windows_sys::Win32::Foundation::HANDLE);
 #[cfg(windows)]
 unsafe impl Send for WindowsJob {}
 #[cfg(windows)]
 impl WindowsJob {
-    fn assign(child: &Child) -> Result<Self, String> {
+    pub(crate) fn assign(child: &Child) -> Result<Self, String> {
         use std::os::windows::io::AsRawHandle;
         use windows_sys::Win32::{Foundation::CloseHandle, System::JobObjects::*};
         unsafe {

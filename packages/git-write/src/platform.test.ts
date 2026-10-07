@@ -9,9 +9,11 @@ import * as platform from './platform';
 import { requireIndexWrites, supportsIndexWrites } from './platform';
 
 it('refuses Windows writes until its persistence and index replacement are supported', () => {
+  vi.stubEnv('GIT_VIEW_NATIVE_HELPER', undefined);
   expect(supportsIndexWrites('win32')).toBe(false);
-  expect(() => requireIndexWrites('win32')).toThrow('Windows 暂未开放 Git 写入');
+  expect(() => requireIndexWrites('win32')).toThrow('Windows 写入需要桌面原生组件');
   expect(() => requireIndexWrites('darwin')).not.toThrow();
+  vi.unstubAllEnvs();
 });
 
 it('keeps coordinator startup and pending discovery available without creating a Windows write store', async () => {

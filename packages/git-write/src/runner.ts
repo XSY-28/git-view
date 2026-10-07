@@ -3,7 +3,7 @@ import { devNull } from 'node:os';
 import { QueryError, type RepositoryIdentity } from '@git-view/contracts';
 
 /** Private plumbing boundary. There is deliberately no API accepting user commands. */
-export function runPlumbing(repository: RepositoryIdentity, args: string[], options: { input?: Buffer; index?: string; signal?: AbortSignal; allowMissing?: boolean } = {}): Promise<Buffer> {
+export function runPlumbing(repository: RepositoryIdentity, args: string[], options: { input?: Buffer; index?: string; signal?: AbortSignal; allowMissing?: boolean; normalization?: { gitDir: string; worktree: string } } = {}): Promise<Buffer> {
   const exact = (expected: string[]) => args.length === expected.length && args.every((value, i) => value === expected[i]);
   const allowed = exact(['config', '--null', '--list', '--show-origin', '--includes'])
     || exact(['rev-parse', '--verify', '--quiet', 'HEAD']) || exact(['rev-parse', '--show-object-format'])
@@ -11,15 +11,16 @@ export function runPlumbing(repository: RepositoryIdentity, args: string[], opti
     || (args.length === 5 && exact(['ls-tree', '-r', '-z', '--full-tree', args[4]!]) && /^(?:[a-f0-9]{40}|[a-f0-9]{64})$/.test(args[4]!))
     || [false, true].some((cached) => ['filter', 'all'].some((selection) => exact(['check-attr', '-z', ...(cached ? ['--cached'] : []), '--stdin', ...(selection === 'filter' ? ['filter'] : ['filter', 'text', 'eol', 'ident', 'working-tree-encoding'])])))
     || exact(['hash-object', '-w', '--stdin', '--no-filters'])
+    || (args.length === 4 && exact(['hash-object', '-w', '--stdin', args[3]!]) && args[3]!.startsWith('--path=') && !args[3]!.includes('\0'))
     || exact(['update-index', '--add', '--remove', '-z', '--index-info']);
   if (!allowed || (args[0] === 'update-index' && !options.index)) throw new QueryError('INTERNAL_ERROR', '拒绝未授权的 Git 写入命令。');
   if (options.signal?.aborted) return Promise.reject(new QueryError('CANCELLED', '操作已取消。'));
   const env: NodeJS.ProcessEnv = {};
   for (const [key, value] of Object.entries(process.env)) if (!key.startsWith('GIT_')) env[key] = value;
-  Object.assign(env, { GIT_DIR: repository.gitDir, GIT_WORK_TREE: repository.worktreeRoot, GIT_OPTIONAL_LOCKS: '0', GIT_TERMINAL_PROMPT: '0', GIT_NO_LAZY_FETCH: '1', LC_ALL: 'C', LANG: 'C', ...(options.index ? { GIT_INDEX_FILE: options.index } : {}) });
+  Object.assign(env, { GIT_DIR: options.normalization?.gitDir ?? repository.gitDir, GIT_WORK_TREE: options.normalization?.worktree ?? repository.worktreeRoot, ...(options.normalization ? { GIT_CONFIG_NOSYSTEM: '1', GIT_CONFIG_GLOBAL: devNull, GIT_ATTR_NOSYSTEM: '1', GIT_OBJECT_DIRECTORY: `${repository.commonGitDir}/objects` } : {}), GIT_OPTIONAL_LOCKS: '0', GIT_TERMINAL_PROMPT: '0', GIT_NO_LAZY_FETCH: '1', LC_ALL: 'C', LANG: 'C', ...(options.index ? { GIT_INDEX_FILE: options.index } : {}) });
   const fixed = ['--no-pager', '--no-optional-locks', '--literal-pathspecs', '-c', `core.hooksPath=${devNull}`, '-c', 'core.fsmonitor=false', '-c', 'core.untrackedCache=false', '-c', 'core.splitIndex=false', '-c', 'core.pager=cat', '-c', 'diff.external=', '-c', 'submodule.recurse=false', '-c', 'protocol.allow=never', '-c', 'gc.auto=0', '-c', 'maintenance.auto=false'];
   return new Promise((resolve, reject) => {
-    const child = spawn('git', [...fixed, ...args], { cwd: repository.worktreeRoot, env, shell: false, stdio: ['pipe', 'pipe', 'pipe'] });
+    const child = spawn('git', [...fixed, ...args], { cwd: options.normalization?.worktree ?? repository.worktreeRoot, env, shell: false, windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'] });
     const stdout: Buffer[] = [], stderr: Buffer[] = [];
     let bytes = 0, failure: QueryError | undefined;
     const stop = (error: QueryError) => { failure ??= error; child.kill('SIGKILL'); };

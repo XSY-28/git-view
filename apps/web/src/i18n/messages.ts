@@ -565,7 +565,7 @@ Object.assign(englishMessages, {
   "index 锁的所有权已变化，未安装结果。": "The index lock ownership changed. The result was not installed.",
   "未选文件的 index 发生变化，已放弃安装。": "Index entries for unselected files changed. Installation was abandoned.",
   "暂存结果 index 缺失。": "The staging result index is missing.",
-  "Windows 暂未开放 Git 写入；仓库查看仍可使用。": "Git writes are unavailable on Windows. Repository viewing remains available.",
+  "Windows 写入需要桌面原生组件，请使用完整安装包。": "Windows writes require the native desktop component. Use the complete installer.",
   "Git 或其 hooks/签名程序超时或输出超限，已终止进程组。\n": "Git or its hooks/signing program timed out or exceeded the output limit. The process group was terminated.\n",
   "分支名称无效。": "Invalid branch name.",
   "分支名称不符合 Git 命名规则。": "The branch name does not follow Git naming rules.",

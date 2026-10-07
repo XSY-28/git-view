@@ -34,6 +34,15 @@ jobs:
           cache-on-failure: true
       - run: pnpm install --frozen-lockfile
       - run: pnpm typecheck
+      - name: Prepare Windows native write bridge
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          pnpm build
+          node scripts/build-desktop.mjs --prepare-only
+          cargo build --locked --manifest-path apps/desktop/src-tauri/Cargo.toml
+          if ($LASTEXITCODE -ne 0) { throw 'Native write bridge build failed' }
+          "GIT_VIEW_NATIVE_HELPER=$env:GITHUB_WORKSPACE\apps\desktop\src-tauri\target\debug\git-view-desktop.exe" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
       - name: macOS full tests including HTTP transport
         if: runner.os == 'macOS'
         run: pnpm test

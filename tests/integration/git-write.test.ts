@@ -166,7 +166,7 @@ describe.skipIf(process.platform === 'win32')('isolated whole-file index writes 
     expect(index(root)).toEqual(marker);
   });
 
-  it('refuses external filters and builtin conversion while never executing hook probes', async () => {
+  it('refuses external filters, supports built-in conversion and never executes hook probes', async () => {
     const root = repository(); write(root, 'file', 'base\n'); commit(root); write(root, 'file', 'changed\n');
     const identity = await reader.resolveRepository(root), overview = await reader.readOverview(identity);
     const marker = path.join(root, 'filter-ran');
@@ -176,8 +176,9 @@ describe.skipIf(process.platform === 'win32')('isolated whole-file index writes 
     expect(existsSync(marker)).toBe(false);
     git(root, ['config', '--unset', 'filter.danger.clean']);
     write(root, '.gitattributes', 'file text\n');
-    await expect(prepare(root, 'stage-files', ['file'])).rejects.toMatchObject({ code: 'UNSUPPORTED_FILTER' });
+    await execute(await prepare(root, 'stage-files', ['file']));
     rmSync(path.join(root, '.gitattributes'));
+    write(root, 'file', 'changed again\n');
     const hookMarker = path.join(root, 'hook-ran');
     write(root, '.git/hooks/post-index-change', `#!/bin/sh\ntouch '${hookMarker}'\n`); chmodSync(path.join(root, '.git/hooks/post-index-change'), 0o755);
     await execute(await prepare(root, 'stage-files', ['file']));
@@ -209,10 +210,11 @@ describe.skipIf(process.platform === 'win32')('isolated whole-file index writes 
     expect(git(root, ['show', ':file'])).toBe('base'); expect(worktree(root)).toEqual(before);
   });
 
-  it('bounds file hashing and refuses configured line-ending conversion', async () => {
+  it('bounds file hashing while supporting built-in line-ending conversion', async () => {
     const root = repository(); write(root, 'file', 'base\n'); commit(root); write(root, 'file', 'changed\n');
     git(root, ['config', 'core.autocrlf', 'input']);
-    await expect(prepare(root, 'stage-files')).rejects.toMatchObject({ code: 'UNSUPPORTED_REPOSITORY' });
+    await execute(await prepare(root, 'stage-files'));
+    expect(git(root, ['show', ':file'])).toBe('changed');
     git(root, ['config', 'core.autocrlf', 'false']);
     truncateSync(path.join(root, 'file'), 64 * 1024 * 1024 + 1);
     const before = index(root);

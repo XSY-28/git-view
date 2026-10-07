@@ -4,6 +4,8 @@
 )]
 mod config;
 mod sidecar;
+#[cfg(windows)]
+mod windows_platform;
 
 use serde_json::{json, Value};
 use std::{
@@ -129,6 +131,11 @@ fn main() {
         libc::umask(0o077);
     }
     let args: Vec<String> = std::env::args().skip(1).collect();
+    #[cfg(windows)]
+    if args.as_slice() == ["--windows-platform"] {
+        windows_platform::main();
+        return;
+    }
     if args.first().map(String::as_str) == Some("inspect") {
         // This branch exits before any Tauri builder, webview or dialog is created.
         let status = config::cli_resources().and_then(|resources| {

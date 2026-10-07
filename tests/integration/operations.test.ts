@@ -1,4 +1,5 @@
 import { afterAll, describe, expect, it } from 'vitest';
+import { execFileSync } from 'node:child_process';
 import { createHash, randomUUID } from 'node:crypto';
 import { chmodSync, lstatSync, readFileSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
@@ -226,6 +227,10 @@ describe('durable file operation coordination', { timeout: GIT_OPERATION_TEST_TI
       chmodSync(file, 0o644);
       await expect(operations.receipt(session, id)).rejects.toMatchObject({ code: 'PERMISSION_DENIED' });
       chmodSync(file, 0o600);
+    } else {
+      execFileSync('icacls', [file, '/grant', '*S-1-1-0:(R)']);
+      try { await expect(operations.receipt(session, id)).rejects.toMatchObject({ code: 'PERMISSION_DENIED' }); }
+      finally { execFileSync('icacls', [file, '/remove:g', '*S-1-1-0']); }
     }
     if (process.platform !== 'win32') {
       const target = path.join(temporaryDirectory(), 'target'); writeFileSync(target, original, { mode: 0o600 }); unlinkSync(file); symlinkSync(target, file);

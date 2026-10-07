@@ -238,7 +238,7 @@ fn string<'a>(v: &'a Value, key: &str) -> Result<&'a str, String> {
 fn run_git(v: &Value) -> Result<Value, String> {
     use std::process::{Command, Stdio};
     use std::sync::{
-        atomic::{AtomicBool, Ordering},
+        atomic::{AtomicUsize, Ordering},
         Arc,
     };
     let cwd = PathBuf::from(string(v, "cwd")?);
@@ -332,23 +332,19 @@ fn run_git(v: &Value) -> Result<Value, String> {
         return Err(e);
     }
     let mut job = Some(job);
-    let overflow = Arc::new(AtomicBool::new(false));
+    let overflow = Arc::new(AtomicUsize::new(0));
     fn reader(
         mut stream: impl Read + Send + 'static,
-        overflow: Arc<AtomicBool>,
+        overflow: Arc<AtomicUsize>,
     ) -> thread::JoinHandle<String> {
         thread::spawn(move || {
             let mut tail = Vec::new();
-            let mut total = 0;
             let mut chunk = [0u8; 4096];
             while let Ok(n) = stream.read(&mut chunk) {
                 if n == 0 {
                     break;
                 }
-                total += n;
-                if total > 1024 * 1024 {
-                    overflow.store(true, Ordering::SeqCst);
-                }
+                overflow.fetch_add(n, Ordering::SeqCst);
                 tail.extend_from_slice(&chunk[..n]);
                 if tail.len() > 8000 {
                     tail.drain(..tail.len() - 8000);
@@ -373,7 +369,7 @@ fn run_git(v: &Value) -> Result<Value, String> {
         if let Some(status) = child.try_wait().map_err(|e| e.to_string())? {
             break status;
         }
-        if Instant::now() >= deadline || overflow.load(Ordering::SeqCst) {
+        if Instant::now() >= deadline || overflow.load(Ordering::SeqCst) > 1024 * 1024 {
             interrupted = true;
             drop(job.take());
             break child.wait().map_err(|e| e.to_string())?;
@@ -384,15 +380,18 @@ fn run_git(v: &Value) -> Result<Value, String> {
     // The job was moved only on the interrupted path.
     drop(job.take());
     let _ = input_writer.join();
+    let stdout = out.join().unwrap_or_default();
+    let stderr = err.join().unwrap_or_default();
+    interrupted |= overflow.load(Ordering::SeqCst) > 1024 * 1024;
     let diagnostic = format!(
         "{}{}{}",
         if interrupted {
-            "Git/hooks/signing timed out or exceeded output limits; Windows job terminated.\n"
+            "Git 或其 hooks/签名程序超时或输出超限，已终止 Windows 进程树。\n"
         } else {
             ""
         },
-        out.join().unwrap_or_default(),
-        err.join().unwrap_or_default()
+        stdout,
+        stderr
     );
     Ok(json!({"code":status.code(),"diagnostic":diagnostic,"interrupted":interrupted}))
 }

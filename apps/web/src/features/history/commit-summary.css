@@ -17,12 +17,11 @@
   flex: 1;
   min-width: 0;
   margin: 0;
-  overflow: hidden;
   color: var(--ink);
   font-size: 15px;
   line-height: 24px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
+  white-space: normal;
 }
 
 .commit-summary-status {

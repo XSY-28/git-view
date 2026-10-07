@@ -72,7 +72,12 @@ async function validateBundle(path, run, expectedVersion) {
 async function requireStopped(run, paths) {
   const output = (await run('/bin/ps', ['-axo', 'pid=,comm='])).stdout;
   for (const line of output.split('\n')) {
-    const command = line.trim().replace(/^\d+\s+/, '');
+    const entry = line.trim().match(/^(\d+)\s+(.+)$/);
+    if (!entry) continue;
+    const command = entry[2];
+    // A distribution installer runs this script with the incoming bundle's
+    // own Node. Exempt only this exact process, never another app or sidecar.
+    if (Number(entry[1]) === process.pid && command === process.execPath) continue;
     if (command.endsWith('/Contents/MacOS/git-view-desktop') || paths.some(path => command.startsWith(`${path}/Contents/`))) {
       throw new Error('Git View is running. Quit Git View, then rerun the desktop update/install command. No process was stopped.');
     }

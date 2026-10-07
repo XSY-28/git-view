@@ -4,7 +4,7 @@
 
 Git View 是一个本地 Git 图形工具，用于查看文件差异、浏览提交历史，以及比较分支和提交。支持整文件暂存、提交和本地分支操作，写入前需要预览确认。
 
-支持中文和英文界面，通过本机 Git 读取仓库，无需连接远程服务。目前为桌面预览版，主要支持 macOS Apple silicon。
+支持中文和英文界面，通过本机 Git 读取仓库，无需连接远程服务。目前为桌面预览版，提供 macOS Apple silicon 和 Windows x64 安装包；Windows 暂时只开放查看。
 
 ![提交历史与文件差异，浏览器中的演示仓库](docs/verification/screenshots/history-simplification-browser.png)
 
@@ -22,7 +22,14 @@ Git View 是一个本地 Git 图形工具，用于查看文件差异、浏览提
 
 ## 安装
 
-当前需要从源码构建。以下步骤适用于 macOS Apple silicon。
+在 [GitHub Releases](https://github.com/XSY-28/git-view/releases/latest) 下载当前版本的安装包和 `.sha256` 校验文件，无需登录 GitHub。两种包都自带 Node 运行时，使用时只需系统 Git，无需另装 Node、pnpm 或 Rust。
+
+- **macOS Apple silicon**：下载 `macos-arm64.dmg`，打开后先退出 Git View，再双击 **Install Git View.command**。安装位置固定为 `~/Applications/Git View.app`，旧版本保留为 ZIP；完成后弹出磁盘映像。不要再复制一份到 `/Applications`。
+- **Windows x64**：下载 `windows-x64-setup.exe`，运行安装向导，再从开始菜单打开。需要 Git for Windows 与 WebView2；缺少 WebView2 时安装程序会下载运行时。Windows 仅支持查看，不开放暂存、提交和分支写入。
+
+当前包尚未代码签名或 Apple 公证，系统可能提示无法验证发布者。确认下载来源后，使用系统提供的“仍要运行”或“隐私与安全性 → 仍要打开”入口，不要关闭系统安全机制。完整步骤与校验、卸载说明见[安装包说明](docs/INSTALL.md)。
+
+### 从源码构建（macOS）
 
 构建需要 Git、Node.js **24.19.0**、pnpm **11.7.0**、Rust 和 Xcode Command Line Tools。CI 使用 Rust 1.99.0。
 
@@ -66,7 +73,9 @@ node scripts/create-demo.mjs
 
 ## 更新
 
-更新本地源码后，先退出 Git View，再在项目根目录运行：
+安装包用户退出 Git View 后，下载新版本并重新安装即可。macOS 会将旧版本备份为 ZIP。
+
+从源码更新的 macOS 用户退出 Git View 后，在项目根目录运行：
 
 ```sh
 pnpm update:desktop
@@ -77,7 +86,7 @@ open "$HOME/Applications/Git View.app"
 
 ## 支持范围
 
-macOS Apple silicon 已有桌面实机验证。Windows 暂时仅开放查看，源码与桌面宿主由 CI 检查，安装和原生界面尚未实机验证。
+macOS Apple silicon 已有桌面实机验证。Windows 暂时仅开放查看，已通过 Windows CI 中的实际安装、原生窗口差异与历史走查、正常退出和卸载验证；Windows 10/11 实体电脑尚未复测。详见[安装包验收记录](docs/verification/2026-10-07-desktop-installers.md)。
 
 - 暂不提供 push、merge、rebase 或历史重写。远程跟踪引用来自本地仓库，不会自动获取远端更新。
 - 暂存按整个文件操作，不支持选择差异行或片段。写入限常规仓库和 index；冲突、进行中的 Git 操作、submodule、特殊 index 或外部内容过滤器会被拒绝。暂不支持 `text`、`eol`、`ident`、`working-tree-encoding` 和 autocrlf 转换。

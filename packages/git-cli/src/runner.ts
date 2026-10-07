@@ -45,7 +45,7 @@ export function runGit(cwd: string, args: string[], options: RunOptions = {}): P
     '-c', 'i18n.logOutputEncoding=utf-8', '-c', 'protocol.allow=never',
   ];
   return new Promise((resolve, reject) => {
-    const child = spawn('git', [...globalArgs, ...args], { cwd, env, shell: false, stdio: ['pipe', 'pipe', 'pipe'] });
+    const child = spawn('git', [...globalArgs, ...args], { cwd, env, shell: false, windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'] });
     const stdout: Buffer[] = [];
     const stderr: Buffer[] = [];
     let bytes = 0;

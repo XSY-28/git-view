@@ -66,6 +66,12 @@ impl Sidecar {
             use std::os::unix::process::CommandExt;
             command.process_group(0);
         }
+        #[cfg(windows)]
+        {
+            use std::os::windows::process::CommandExt;
+            // The GUI host has no console; keep its piped background runtime quiet.
+            command.creation_flags(windows_sys::Win32::System::Threading::CREATE_NO_WINDOW);
+        }
         let mut child = command
             .spawn()
             .map_err(|_| "Bundled query process could not start")?;

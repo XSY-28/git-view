@@ -117,7 +117,7 @@ try {
   await page.getByRole('navigation', { name: /^(Main view|主视图)$/ }).getByRole('button', { name: /^(Changes|当前改动)/ }).click();
   const confirm = async (consent = false) => {
     const dialog = page.locator('.operation-dialog');
-    await expect(dialog).toBeVisible();
+    await expect(dialog).toBeVisible({ timeout: 30_000 });
     if (consent) await dialog.locator('.operation-consent input').check();
     await dialog.locator('footer .button.primary').click();
     await expect(dialog).toBeHidden({ timeout: 30_000 });

@@ -794,6 +794,12 @@ code {
 }
 
 .history-graph-pan {
+  /* Keep horizontal navigation reachable when toolbar wrapping or a shorter
+     window pushes the end of the graph below the viewport. */
+  position: sticky;
+  bottom: 0;
+  z-index: 1;
+  background: var(--panel);
   height: 16px;
   overflow-x: auto;
   overflow-y: hidden;

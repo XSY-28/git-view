@@ -1,10 +1,10 @@
 # Git View
 
+[中文](README.md) · [English](README.en.md)
+
 [![Source checks](https://github.com/XSY-28/git-view/actions/workflows/check.yml/badge.svg)](https://github.com/XSY-28/git-view/actions/workflows/check.yml) · [MIT License](LICENSE)
 
-我做 Git View，是想更直观地看一个项目改了什么，以及它是怎么一步步变成现在这样的。
-
-它是一个本地 Git 图形工具，可以查看文件差异、浏览提交历史、比较两个版本，也可以把项目演化的文章放进来读。支持整文件暂存、提交和本地分支操作，写入前需要预览确认。
+Git View 是一个本地 Git 图形工具，用于查看文件差异、浏览提交历史、比较版本，以及阅读项目演化文章。支持整文件暂存、提交和本地分支操作，写入前需要预览确认。
 
 支持中文和英文界面，通过本机 Git 读取仓库，无需连接远程服务。目前为桌面预览版，提供 macOS Apple silicon 和 Windows x64 安装包。
 
@@ -18,7 +18,7 @@
 | 历史 | 浏览提交关系图，直接查看作者日期，按分支或标签筛选，查看每次提交的文件差异。 |
 | 版本比较 | 比较两个分支、标签或提交，查看两侧独有提交；可选择两端直接比较或从共同祖先比较到 B。 |
 | 重大变更 | 为当前仓库导入一篇 Markdown 演化文章，阅读目录、表格、Mermaid 图表和本地配图；图表支持放大。 |
-| 历史查询 | 按提交标题、作者、提交 ID 或文件路径搜索；查看文件历史、行来源（git blame）、stash 和 reflog。 |
+| 历史查询 | 按提交标题、作者、提交 ID 或文件路径搜索；查看文件历史、行来源（`git blame`）、stash 和 reflog。 |
 | 仓库操作 | 按文件暂存或取消暂存，提交已暂存内容，创建和切换本地分支。 |
 
 在历史侧栏选择分支只会筛选历史。创建或切换分支使用顶部的当前分支入口；创建后仍留在原分支，切换要求工作区干净。
@@ -30,6 +30,8 @@
 一个项目发展到今天，可能已经很复杂了。但回头看，它往往是在不断遇到问题、做出选择的过程中，逐渐变成现在这个样子的。我想了解的就是：当时遇到了什么问题，为什么要这样改，又付出了什么代价。
 
 所以我加了“重大变更”这一栏。可以先让 AI 根据 Git 历史整理一篇文章，再把文章导入 Git View。先读懂主要变化，需要对照时再切到历史页，不必一开始就逐行看代码。文章的内容和判断仍需要核实，Git View 负责把它显示出来。
+
+建议搭配 **“航母是怎样建成的”** skill（`evolutionary-understanding`）使用：让 skill 根据项目的 Git 历史梳理关键设计变化，解释当时的问题、选择和代价，再将输出保存为 Markdown，导入“重大变更”。skill 负责整理和解释，Git View 负责阅读展示；也可以导入自己编写或通过其他方式整理的文章。
 
 ![在 Git View 中阅读 DSH 的演化文章](docs/verification/screenshots/major-changes-native-article.png)
 
@@ -123,7 +125,7 @@ open "$HOME/Applications/Git View.app"
 macOS Apple silicon 已有桌面实机验证。Windows 通过 CI 验证实际安装、原生窗口及仓库操作；Windows 10/11 实体电脑尚未复测。详见[安装包验收记录](docs/verification/2026-10-07-windows-operations.md)。
 
 - 暂不提供 push、merge、rebase 或历史重写。远程跟踪引用来自本地仓库，不会自动获取远端更新。
-- 暂存按整个文件操作，不支持选择差异行或片段。写入限常规仓库和 index；冲突、进行中的 Git 操作、submodule、特殊 index 或外部内容过滤器会被拒绝。暂不支持 `text`、`eol`、`ident`、`working-tree-encoding` 和 autocrlf 转换。
+- 暂存按整个文件操作，不支持选择差异行或片段。写入限常规仓库和 index；冲突、进行中的 Git 操作、submodule、特殊 index 或外部内容过滤器会被拒绝。支持 Git 内置的 `text`、`eol` 和 autocrlf 换行转换；暂不支持 `ident` 和 `working-tree-encoding` 转换。
 - 提交保留仓库的 hooks 和签名设置，切换分支会运行已配置的 hook；确认页会要求授权。预览后仓库状态改变时，需要重新预览。
 - 二进制、非 UTF-8、超过 1 MiB 或 10,000 行的内容不展开文本预览。不支持裸仓库、partial clone/promisor 仓库；使用外部 clean/process 过滤器时不扫描工作区。
 

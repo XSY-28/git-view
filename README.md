@@ -31,7 +31,7 @@ Git View 是一个本地 Git 图形工具，用于查看文件差异、浏览提
 
 所以我加了“重大变更”这一栏。可以先让 AI 根据 Git 历史整理一篇文章，再把文章导入 Git View。先读懂主要变化，需要对照时再切到历史页，不必一开始就逐行看代码。文章的内容和判断仍需要核实，Git View 负责把它显示出来。
 
-建议搭配 **“航母是怎样建成的”** skill（`evolutionary-understanding`）使用：让 skill 根据项目的 Git 历史梳理关键设计变化，解释当时的问题、选择和代价，再将输出保存为 Markdown，导入“重大变更”。skill 负责整理和解释，Git View 负责阅读展示；也可以导入自己编写或通过其他方式整理的文章。
+建议搭配 **[“航母是怎样建成的”](https://github.com/XSY-28/learning-skills#how-an-aircraft-carrier-is-built)** skill（`evolutionary-understanding`）使用：让 skill 根据项目的 Git 历史梳理关键设计变化，解释当时的问题、选择和代价，再将输出保存为 Markdown，导入“重大变更”。skill 负责整理和解释，Git View 负责阅读展示；也可以导入自己编写或通过其他方式整理的文章。
 
 ![在 Git View 中阅读 DSH 的演化文章](docs/verification/screenshots/major-changes-native-article.png)
 

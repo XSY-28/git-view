@@ -31,7 +31,7 @@ A project may be complex today, but looking back often reveals a sequence of pro
 
 That is why I added the Major changes view. An AI can first organize an article from Git history, which can then be imported into Git View. Read the main changes first and switch to history when a comparison would help, without having to start by reading every line of code. The article's facts and judgments still need verification; Git View displays the material.
 
-The **“航母是怎样建成的”** skill (How an Aircraft Carrier Is Built; `evolutionary-understanding`) is a recommended companion. Use it to trace key design changes through a project's Git history and explain the problems, choices, and tradeoffs behind them. Save the result as Markdown and import it into Major changes. The skill organizes and explains the material; Git View provides the reading interface. Articles written manually or prepared with other tools can also be imported.
+The **[How an Aircraft Carrier Is Built](https://github.com/XSY-28/learning-skills#how-an-aircraft-carrier-is-built)** skill (`evolutionary-understanding`) is a recommended companion. Use it to trace key design changes through a project's Git history and explain the problems, choices, and tradeoffs behind them. Save the result as Markdown and import it into Major changes. The skill organizes and explains the material; Git View provides the reading interface. Articles written manually or prepared with other tools can also be imported.
 
 ![Reading an article about DSH's evolution in Git View](docs/verification/screenshots/major-changes-native-article.png)
 

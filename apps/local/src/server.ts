@@ -17,6 +17,7 @@ export interface LocalServerOptions {
   now?: () => number;
   persist?: boolean;
   pickFolder?: (signal?: AbortSignal) => Promise<FolderChoice>;
+  pickArticle?: (kind: 'file' | 'folder', signal?: AbortSignal) => Promise<FolderChoice>;
 }
 const forbidden = () => new QueryError('UNAUTHORIZED', '页面授权无效或已过期，请重新执行 git-view open。');
 function equal(a: string, b: string) { const left = Buffer.from(a); const right = Buffer.from(b); return left.length === right.length && timingSafeEqual(left, right); }
@@ -128,6 +129,11 @@ export async function startLocalServer(options: LocalServerOptions) {
         if ('sessionId' in action) allowSession(action.sessionId);
         if (action.action === 'recents') { respond(response, 200, await service.request(action, controller.signal)); return; }
         if (action.action === 'heartbeat') { respond(response, 200, success({ alive: true })); return; }
+        if (action.action === 'pick-article') {
+          if (!options.pickArticle) throw new QueryError('PICKER_UNAVAILABLE', '无法打开文章选择窗口，请输入文章或资料文件夹的绝对路径。');
+          const choice = folderChoiceSchema.parse(await options.pickArticle(action.kind, AbortSignal.any([controller.signal, pickerLifetime.signal])));
+          respond(response, 200, success(choice)); return;
+        }
         if (action.action === 'pick-folder') {
           if (!options.pickFolder) throw new QueryError('PICKER_UNAVAILABLE', '当前环境无法打开系统文件夹选择窗口，请手动输入仓库路径。');
           const choice = folderChoiceSchema.parse(await options.pickFolder(AbortSignal.any([controller.signal, pickerLifetime.signal])));

@@ -867,10 +867,13 @@ code {
 .commit-author {
   min-width: 0;
   max-width: 45%;
-  flex-shrink: 0;
+  flex-shrink: 1;
   overflow: hidden;
   text-overflow: ellipsis
 }
+
+.commit-date { flex-shrink: 0; font-variant-numeric: tabular-nums; }
+.commit-date::before { content: '·'; margin-right: 10px; color: var(--muted); }
 
 .commit-refs {
   display: flex;

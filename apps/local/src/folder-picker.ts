@@ -4,6 +4,7 @@ import { TextDecoder } from 'node:util';
 import { folderChoiceSchema, QueryError, type FolderChoice } from '@git-view/contracts';
 
 export interface NativePickerLimits {
+  kind?: 'article-file' | 'article-folder';
   timeoutMs?: number;
   maxOutputBytes?: number;
   killGraceMs?: number;
@@ -23,7 +24,7 @@ export function createNativeFolderPicker(executable: string, platform: NodeJS.Pl
     busy = true;
     return new Promise<FolderChoice>((resolveChoice, reject) => {
       let child;
-      try { child = spawn(executable, [], { shell: false, stdio: ['ignore', 'pipe', 'pipe'] }); }
+      try { child = spawn(executable, limits.kind ? [limits.kind] : [], { shell: false, stdio: ['ignore', 'pipe', 'pipe'] }); }
       catch { busy = false; reject(unavailable()); return; }
       const chunks: Buffer[] = [];
       let outputBytes = 0;

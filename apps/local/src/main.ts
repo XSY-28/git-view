@@ -8,10 +8,13 @@ import { createNativeFolderPicker } from './folder-picker';
 
 try {
   const distribution = dirname(fileURLToPath(import.meta.url));
+  const picker = join(distribution, 'FolderPicker.app', 'Contents', 'MacOS', 'FolderPicker');
+  const articlePickers = { file: createNativeFolderPicker(picker, process.platform, { kind: 'article-file' }), folder: createNativeFolderPicker(picker, process.platform, { kind: 'article-folder' }) };
   const server = await startLocalServer({
     queries: createRepositoryQueries(createGitAdapter()), directory: dataDirectory(),
     webDirectory: join(distribution, 'web'),
     pickFolder: createNativeFolderPicker(join(distribution, 'FolderPicker.app', 'Contents', 'MacOS', 'FolderPicker')),
+    pickArticle: (kind, signal) => articlePickers[kind](signal),
   });
   const stop = () => { void server.close().then(() => process.exit(0)); };
   process.once('SIGINT', stop); process.once('SIGTERM', stop);

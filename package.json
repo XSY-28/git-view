@@ -30,13 +30,20 @@
     "check:duplicates": "node --test scripts/check-duplicate-files.test.mjs && node scripts/check-duplicate-files.mjs"
   },
   "dependencies": {
+    "mermaid": "^12.2.0",
     "react": "19.3.0",
     "react-dom": "19.3.0",
+    "react-markdown": "^10.1.0",
+    "remark-gfm": "^4.0.1",
+    "remark-parse": "^11.0.0",
+    "unified": "^11.0.5",
+    "unist-util-visit": "^5.2.0",
     "zod": "4.6.5"
   },
   "devDependencies": {
     "@playwright/test": "1.63.0",
     "@tauri-apps/cli": "2.12.1",
+    "@types/mdast": "^4.0.4",
     "@types/node": "24.10.1",
     "@types/react": "19.2.2",
     "@types/react-dom": "19.2.2",

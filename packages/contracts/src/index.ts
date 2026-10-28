@@ -13,9 +13,15 @@ import { comparisonOptionsSchema, comparisonModeSchema, comparisonSideSchema, re
 import { languageSchema, preferencesSchema } from './preferences';
 
 // Transport inputs are validated at the HTTP boundary; arbitrary Git commands are never accepted.
+export * from './article';
+import { articlePathSchema, articleResultSchema, articleSourceSchema } from './article';
 const baseRequest = { schemaVersion: z.literal(1), requestId: z.string().min(1).max(100) };
 const sessionRequest = { ...baseRequest, sessionId: z.string().min(1), generation: z.number().int().nonnegative() };
 export const requestSchema = z.discriminatedUnion('action', [
+  z.object({ ...baseRequest, action: z.literal('pick-article'), kind: z.enum(['file', 'folder']) }).strict(),
+  z.object({ ...baseRequest, sessionId: z.string().min(1), action: z.literal('article') }).strict(),
+  z.object({ ...baseRequest, sessionId: z.string().min(1), action: z.literal('article-source'), sourcePath: articlePathSchema }).strict(),
+  z.object({ ...baseRequest, sessionId: z.string().min(1), action: z.literal('article-import'), sourcePath: articlePathSchema, mainFile: z.string().min(1).max(32768).optional() }).strict(),
   z.object({ ...baseRequest, action: z.literal('open'), path: z.string().min(1).max(32768) }),
   z.object({ ...baseRequest, action: z.literal('pick-folder') }).strict(),
   z.object({ ...baseRequest, action: z.literal('recents') }),
@@ -47,7 +53,7 @@ export type ApiRequest = z.infer<typeof requestSchema>;
 export function queryKey(request: ApiRequest, worktreeId: string): string {
   return JSON.stringify([worktreeId, request.action, 'entryId' in request ? request.entryId : null, 'oid' in request ? request.oid : null, 'scope' in request ? request.scope : null, 'ref' in request ? request.ref ?? null : null, 'cursor' in request ? request.cursor : null, request.action === 'history' ? resolveHistoryOrder(request) : null, ...('comparisonId' in request ? [request.comparisonId, 'side' in request ? request.side : null, 'mode' in request ? request.mode : null] : request.action === 'compare' ? [request.a, request.b] : []), ...('snapshotId' in request ? [request.snapshotId, 'recordId' in request ? request.recordId : null, 'side' in request ? request.side : null, 'part' in request ? request.part : null] : []), ...(request.action === 'search' ? [request.field, request.term] : request.action === 'file-history' ? [request.endpoint, request.path] : request.action === 'records' ? [request.kind] : [])]);
 }
-export const resultDataSchema = z.union([overviewSchema, sessionSchema, diffSchema, historySchema, navigationSchema, commitDetailSchema, revisionComparisonSchema, comparisonCommitsSchema, searchPageSchema, fileHistoryPageSchema, blameSchema, recordPageSchema, stashDetailSchema, folderChoiceSchema, preferencesSchema, z.array(recentSchema), z.object({ ticket: z.string() }), z.object({ alive: z.boolean() })]);
+export const resultDataSchema = z.union([articleResultSchema, articleSourceSchema, overviewSchema, sessionSchema, diffSchema, historySchema, navigationSchema, commitDetailSchema, revisionComparisonSchema, comparisonCommitsSchema, searchPageSchema, fileHistoryPageSchema, blameSchema, recordPageSchema, stashDetailSchema, folderChoiceSchema, preferencesSchema, z.array(recentSchema), z.object({ ticket: z.string() }), z.object({ alive: z.boolean() })]);
 export const responseSchema = z.discriminatedUnion('ok', [
   z.object({ schemaVersion: z.literal(1), ok: z.literal(true), data: resultDataSchema, stamp: stampSchema.optional() }),
   z.object({ schemaVersion: z.literal(1), ok: z.literal(false), error: appErrorSchema, stamp: stampSchema.optional(), requestId: z.string(), finishedAt: z.string() }),

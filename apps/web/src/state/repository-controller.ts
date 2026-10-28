@@ -5,7 +5,7 @@ import type { InvestigationMemory } from '../features/investigation/options';
 import type { InvestigationReadingMemory } from '../features/investigation/reading-memory';
 
 export type FileListScope = 'changes' | 'history';
-export type MainView = FileListScope | 'comparison' | 'investigation';
+export type MainView = FileListScope | 'comparison' | 'investigation' | 'article';
 export type HistoryScope = 'all' | 'head' | 'ref';
 export type DiffMode = 'unified' | 'split';
 const STORAGE_KEY = 'git-view.preferences.v1';

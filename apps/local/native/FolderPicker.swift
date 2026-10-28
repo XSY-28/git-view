@@ -23,6 +23,15 @@ struct FolderPicker {
         panel.allowsMultipleSelection = false
         panel.canCreateDirectories = false
         panel.resolvesAliases = true
+        let kind = CommandLine.arguments.dropFirst().first
+        if kind == "article-file" || kind == "article-folder" {
+            panel.title = "导入重大变更文章"
+            panel.prompt = "选择"
+            panel.message = "选择 Markdown 文章，或包含文章和图片的资料文件夹。"
+            panel.canChooseFiles = kind == "article-file"
+            panel.canChooseDirectories = kind == "article-folder"
+            if kind == "article-file" { panel.allowedFileTypes = ["md", "markdown"] }
+        }
 
         application.activate(ignoringOtherApps: true)
         panel.makeKeyAndOrderFront(nil)

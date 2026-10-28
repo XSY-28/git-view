@@ -381,7 +381,9 @@ test('wide merge graphs have a clipped graph column separate from descriptions a
     expect(leaks).toEqual({ count: 0, first: undefined });
   }
   for (const width of [390, 1440]) {
-    await page.setViewportSize({ width, height: width === 390 ? 844 : 960 });
+    // A short mobile viewport must keep horizontal navigation reachable even
+    // when the header and history controls take more of the available height.
+    await page.setViewportSize({ width, height: width === 390 ? 760 : 960 });
     await expect.poll(() => pan.evaluate(node => node.scrollWidth > node.clientWidth)).toBe(true);
     for (const top of [0, deepTop]) {
       await scroll.evaluate((node, top) => { node.scrollTop = top; }, top);

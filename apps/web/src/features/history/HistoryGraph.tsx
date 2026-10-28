@@ -72,6 +72,10 @@ export function HistoryGraph({ commits, selected, headOid, onSelect, locateReque
     <div className="history-virtual" style={{ height: commits.length * ROW + (layout.continuations.length ? 36 : 0) }}>
       {commits.slice(start, end).map((commit, offset) => {
         const index = start + offset; const row = layout.rows[index]!;
+        const authored = new Date(commit.authoredAt);
+        const validDate = Number.isFinite(authored.getTime());
+        const dateLabel = validDate ? `${authored.getFullYear()}-${String(authored.getMonth() + 1).padStart(2, '0')}-${String(authored.getDate()).padStart(2, '0')}` : '—';
+        const dateTitle = validDate ? `${t('作者日期')} · ${new Intl.DateTimeFormat(locale, { dateStyle: 'full', timeStyle: 'long' }).format(authored)}` : t('日期不可用');
         return <button key={commit.oid} data-testid="commit-row" data-row={index} className={`commit-row ${selected === commit.oid ? 'selected' : ''}`} style={{ top: index * ROW, height: ROW }} onClick={() => onSelect(commit)} onKeyDown={event => keyboard(event, index)} aria-pressed={selected === commit.oid} title={`${commit.subject}\n${commit.author} · ${new Date(commit.authoredAt).toLocaleString(locale)}\n${commit.oid}${commit.refs.length ? `\n${commit.refs.join(', ')}` : ''}`}>
           <span className="history-graph-viewport" style={{ width: graphColumnWidth }} onWheel={event => {
             const delta = event.shiftKey && !event.deltaX ? event.deltaY : event.deltaX;
@@ -87,7 +91,7 @@ export function HistoryGraph({ commits, selected, headOid, onSelect, locateReque
             {row.boundary ? <rect x={11 + row.lane * LANE} y={ROW / 2 - 4} width="8" height="8" fill="var(--paper)" stroke={LANE_COLORS[row.lane % LANE_COLORS.length]} strokeWidth="2" /> : <circle cx={15 + row.lane * LANE} cy={ROW / 2} r="4.5" fill={selected === commit.oid ? LANE_COLORS[row.lane % LANE_COLORS.length] : 'var(--paper)'} stroke={LANE_COLORS[row.lane % LANE_COLORS.length]} strokeWidth="2" />}
           </svg>
           </span>
-          <span className="commit-copy"><span className="commit-subject">{headOid === commit.oid && <span className="ref-label head-label">HEAD</span>}{commit.subject || t('（无提交说明）')}</span><span className="commit-meta"><span className="commit-author">{commit.author}</span>{commit.boundary && <span className="boundary-label">{t("浅克隆边界")}</span>}{commit.refs.length > 0 && <span className="commit-refs">{commit.refs.map(ref => <span className="ref-label" key={ref} title={ref}>{ref}</span>)}</span>}</span></span>
+          <span className="commit-copy"><span className="commit-subject">{headOid === commit.oid && <span className="ref-label head-label">HEAD</span>}{commit.subject || t('（无提交说明）')}</span><span className="commit-meta"><span className="commit-author">{commit.author}</span><time className="commit-date" dateTime={validDate ? commit.authoredAt : undefined} title={dateTitle}>{dateLabel}</time>{commit.boundary && <span className="boundary-label">{t("浅克隆边界")}</span>}{commit.refs.length > 0 && <span className="commit-refs">{commit.refs.map(ref => <span className="ref-label" key={ref} title={ref}>{ref}</span>)}</span>}</span></span>
         </button>;
       })}
       {layout.continuations.length > 0 && <div className="graph-continuation" style={{ top: commits.length * ROW }}><span aria-hidden="true">┆</span> {t(" 父提交尚未加载 · 继续加载可展开关系")}</div>}

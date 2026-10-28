@@ -4,6 +4,7 @@ import { createGitAdapter } from '@git-view/git-cli';
 import { createOperations } from '../../../packages/operations/src/index';
 import { PreferencesStore, RecentStore, ensurePrivateDirectory } from './storage';
 import { RepositoryWatchers } from './watch';
+import { ArticleStore, inspectArticleSource } from './articles';
 
 export interface RepositoryQueries {
   open(path: string, signal?: AbortSignal): Promise<RepositorySession>;
@@ -20,6 +21,7 @@ export async function createLocalService(queries: RepositoryQueries, directory: 
   await ensurePrivateDirectory(directory);
   const recents = new RecentStore(directory); await recents.load();
   const preferences = new PreferencesStore(directory);
+  const articles = new ArticleStore(directory);
   const watchers = new RepositoryWatchers();
   const operations = await createOperations({ directory, read: createGitAdapter() });
   return {
@@ -40,6 +42,11 @@ export async function createLocalService(queries: RepositoryQueries, directory: 
       finally { resume?.(); }
     },
     async request(request: ApiRequest, signal?: AbortSignal) {
+      if (request.action === 'article' || request.action === 'article-import' || request.action === 'article-source') {
+        const { repository } = queries.getSession(request.sessionId);
+        if (request.action === 'article-source') return success(await inspectArticleSource(request.sourcePath));
+        return success({ article: request.action === 'article' ? await articles.read(repository.repositoryId) : await articles.import(repository.repositoryId, request.sourcePath, request.mainFile, signal) });
+      }
       if (request.action === 'preferences') return success(await preferences.read());
       if (request.action === 'set-language') return success(await preferences.setLanguage(request.language));
       if (request.action === 'recents') return success(recents.list());

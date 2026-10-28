@@ -45,13 +45,12 @@ async function fileHistory(page: Page) {
   await page.getByLabel('文件历史路径').fill('code.txt'); await page.getByRole('button', { name: '查看历史', exact: true }).click();
   await expect(page.locator('.investigation-file .investigation-row')).toHaveCount(2); await expect(page.locator('.investigation-file [data-testid=diff-scroll]')).toContainText('+fourth');
 }
-test('three main entries integrate history tools with an explicit list scope and all-reference search', async ({ page }) => {
+test('main entries integrate history tools with an explicit list scope and all-reference search', async ({ page }) => {
   const before = fingerprint(root); await open(page);
   const main = page.getByRole('navigation', { name: '主视图', exact: true });
   const contents = page.getByRole('navigation', { name: '历史内容', exact: true });
   const sidebar = page.getByRole('complementary', { name: '历史范围', exact: true });
-  await expect(main.getByRole('button')).toHaveCount(3);
-  await expect(main.getByRole('button')).toHaveText([/^当前改动\s*0$/, '历史', '版本比较']);
+  await expect(main.getByRole('button')).toHaveText([/^当前改动\s*0$/, '历史', '版本比较', '重大变更']);
   await expect(page.getByRole('button', { name: '历史调查', exact: true })).toHaveCount(0);
   await expect(contents.getByRole('button')).toHaveText(['提交列表', '提交搜索']);
   await expect(sidebar).toHaveCount(0);

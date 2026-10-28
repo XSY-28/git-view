@@ -17,6 +17,7 @@ use std::{
 };
 use tauri::{Emitter, Manager};
 use tauri_plugin_dialog::DialogExt;
+use tauri_plugin_opener::OpenerExt;
 
 struct InitialOpen {
     path: Option<String>,
@@ -71,13 +72,30 @@ fn initial_repository(host: tauri::State<'_, Host>) -> Option<String> {
 }
 
 #[tauri::command]
+fn open_article_link(app: tauri::AppHandle, url: String) -> Result<(), String> {
+    let parsed = tauri::Url::parse(&url).map_err(|_| "Invalid article link")?;
+    if url.len() > 8192
+        || !matches!(parsed.scheme(), "https" | "http")
+        || parsed.host_str().is_none()
+    {
+        return Err("Only HTTP(S) article links are supported".into());
+    }
+    app.opener()
+        .open_url(parsed.as_str(), None::<&str>)
+        .map_err(|_| "Could not open article link".into())
+}
+
+#[tauri::command]
 async fn query(
     app: tauri::AppHandle,
     host: tauri::State<'_, Host>,
     message: Value,
 ) -> Result<Value, String> {
     if message.get("operation").and_then(Value::as_str) == Some("request")
-        && message.pointer("/request/action").and_then(Value::as_str) == Some("pick-folder")
+        && matches!(
+            message.pointer("/request/action").and_then(Value::as_str),
+            Some("pick-folder" | "pick-article")
+        )
     {
         let envelope = message.as_object().ok_or("Invalid picker envelope")?;
         let request = message
@@ -90,8 +108,11 @@ async fn query(
                 .map(|id| !id.is_empty() && id.chars().count() <= max)
                 .unwrap_or(false)
         };
+        let article = request.get("action").and_then(Value::as_str) == Some("pick-article");
+        let kind = request.get("kind").and_then(Value::as_str).unwrap_or("");
         if envelope.len() != 3
-            || request.len() != 3
+            || request.len() != if article { 4 } else { 3 }
+            || (article && !matches!(kind, "file" | "folder"))
             || !valid_id(envelope.get("id"), config::MAX_ENVELOPE_ID_CHARS)
             || !valid_id(request.get("requestId"), 100)
             || request.get("schemaVersion").and_then(Value::as_u64)
@@ -102,11 +123,20 @@ async fn query(
         if host.picking.swap(true, Ordering::SeqCst) {
             return Err("Folder picker is already open".into());
         }
+        let file = article && kind == "file";
         let picked = tauri::async_runtime::spawn_blocking(move || {
-            app.dialog()
-                .file()
-                .set_title("选择 Git 仓库目录")
-                .blocking_pick_folder()
+            let dialog = app.dialog().file().set_title(if article {
+                "导入重大变更文章"
+            } else {
+                "选择 Git 仓库目录"
+            });
+            if file {
+                dialog
+                    .add_filter("Markdown", &["md", "markdown"])
+                    .blocking_pick_file()
+            } else {
+                dialog.blocking_pick_folder()
+            }
         })
         .await;
         host.picking.store(false, Ordering::SeqCst);
@@ -228,7 +258,12 @@ fn main() {
             }
         }))
         .plugin(tauri_plugin_dialog::init())
-        .invoke_handler(tauri::generate_handler![query, initial_repository])
+        .plugin(tauri_plugin_opener::init())
+        .invoke_handler(tauri::generate_handler![
+            query,
+            initial_repository,
+            open_article_link
+        ])
         .build(tauri::generate_context!())
         .expect("Desktop initialization failed");
     app.run(|app, event| {
